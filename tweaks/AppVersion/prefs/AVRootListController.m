@@ -19,6 +19,16 @@ static NSString *const kPrefsPath =
 
 @implementation AVRootListController
 
+#pragma mark - Lifecycle
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    // These rows are a view onto files that change while this pane is not
+    // visible, so the cache has to be dropped rather than trusted.
+    _specifiers = nil;
+    [self reloadSpecifiers];
+}
+
 #pragma mark - Files
 
 + (NSString *)logPath {
@@ -119,11 +129,21 @@ static PSSpecifier *AVButton(id target, NSString *label, SEL action) {
     NSString *seen = [[self class] lastSeen];
     NSMutableArray *specs = [NSMutableArray array];
 
+    NSString *version = [[NSBundle bundleForClass:[self class]]
+                         objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+    BOOL recorded = [[NSFileManager defaultManager]
+                     fileExistsAtPath:[[self class] lastSeenPath]];
+
     [specs addObject:AVGroup(@"Current",
         @"The version the App Store last asked Apple for. It is recorded "
-        @"automatically the next time you tap Install or Update, so there is "
-        @"nothing to look up by hand.")];
+        @"automatically when you tap Install or Update, so there is nothing to "
+        @"look up by hand.")];
+    [specs addObject:AVInfo(self, @"Tweak version", version ?: @"unknown")];
     [specs addObject:AVInfo(self, @"Last seen", seen ?: @"none yet")];
+    // Distinguishes "never written" from "written but unreadable", which look
+    // identical from the row above.
+    [specs addObject:AVInfo(self, @"Record file",
+                            recorded ? @"present" : @"not created yet")];
 
     [specs addObject:AVGroup(@"Override",
         @"Leave empty to observe only. Set a version id and the App Store will "

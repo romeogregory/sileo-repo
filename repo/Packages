@@ -6,13 +6,13 @@ Author: Romeo <romeogregoryx@gmail.com>
 Section: Tweaks
 Depends: ellekit, preferenceloader, firmware (>= 15.0)
 Architecture: iphoneos-arm64
-Version: 0.7.0
+Version: 0.8.0
 Installed-Size: 376
-Filename: ./debs/com.romeo.appversion_0.7.0_iphoneos-arm64.deb
-Size: 20080
-MD5sum: ff2287dd37d9533a87f261cf8458fb79
-SHA1: 591b7249c23ed05559764513cc29c2239c1440cf
-SHA256: cdd966d07ae930a6c7ac3ecdf85554a07945d2b57ba133d1bcc14139f786f2c6
+Filename: ./debs/com.romeo.appversion_0.8.0_iphoneos-arm64.deb
+Size: 20628
+MD5sum: 1187b51ab1eac52f03efd9a4b0bb716f
+SHA1: b8ce55d68b1e7b8f3d259e3bdb0d79c2ae8615d5
+SHA256: a86f8fcb718b4a188eb2e7f0a3193f5144d6a98a56bc4308f25cd6bdc7d453dd
 
 Package: com.romeo.hello
 Name: Hello World

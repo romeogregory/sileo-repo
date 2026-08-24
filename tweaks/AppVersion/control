@@ -1,6 +1,6 @@
 Package: com.romeo.appversion
 Name: AppVersion
-Version: 0.7.0
+Version: 0.8.0
 Architecture: iphoneos-arm64
 Description: Choose which version of an app the App Store installs. Configured in Settings; only reaches versions your Apple ID can already obtain.
 Maintainer: Romeo <romeogregoryx@gmail.com>
