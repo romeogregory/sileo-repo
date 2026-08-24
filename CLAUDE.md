@@ -144,10 +144,16 @@ hash — see below.
 — including that the served `.deb`'s SHA256 matches the `SHA256:` line in
 `Packages`. The device is jailbroken and Sileo is installed.
 
-**Not verified.** No package from this repo has been installed on the device yet,
-so the last link in the chain — Sileo adding the source, resolving the index, and
-dpkg unpacking a payload to `/var/jb` — is still unproven. To close it: add
-`https://romeogregory.github.io/sileo-repo/` in Sileo, install Hello World, then
+Sileo on the device adds `https://romeogregory.github.io/sileo-repo/` as a
+source, resolves the index, and lists Hello World — so the generated `Release`
+and `Packages` are valid to a real package manager, not just to `build_repo.py`.
+
+Note that the repo root returns **404** in a browser: there is no `index.html`
+and none is needed, since Sileo requests `/Release` and `/Packages` directly.
+That 404 is not a fault.
+
+**Not verified.** No package has actually been installed yet, so dpkg unpacking a
+payload to `/var/jb` is still unproven. To close it: install Hello World, then
 confirm over `issh` (user `root`, password `alpine`) that
 `/var/jb/usr/share/hello/hello.txt` exists.
 
