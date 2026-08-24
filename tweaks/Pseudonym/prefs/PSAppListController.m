@@ -99,35 +99,48 @@ static NSArray *PSAllApplications(id workspace) {
     return result;
 }
 
-- (NSString *)footerText:(NSUInteger)listed {
-    if (!_workspaceResolved) {
-        return @"Could not reach LaunchServices, so no apps can be listed. "
-               @"This is a bug, not an empty device.";
-    }
-    if (!_reportedCount) {
-        return @"The system reported no installed applications at all.";
-    }
-    return [NSString stringWithFormat:
-            @"%lu app%@ listed, %lu reported by the system.\n\n"
-            @"Enabling an app takes effect the next time it launches, so "
-            @"force-quit it afterwards.\n\nApple's own apps are deliberately "
-            @"absent: spoofing identifiers inside system processes breaks "
-            @"activation, push and iCloud.",
-            (unsigned long)listed, listed == 1 ? @"" : @"s",
-            (unsigned long)_reportedCount];
+// A PSGroupCell with no rows beneath it renders nothing — no header, no
+// footer. Putting diagnostics in a footer therefore hid them in precisely the
+// case they exist for: an empty list. Rows always render, so the status goes in
+// cells instead.
+static PSSpecifier *PSStatusRow(id target, NSString *label, NSString *value) {
+    PSSpecifier *spec = [PSSpecifier preferenceSpecifierNamed:label
+                                                       target:target
+                                                          set:NULL
+                                                          get:@selector(statusValue:)
+                                                       detail:nil
+                                                         cell:PSTitleValueCell
+                                                         edit:nil];
+    [spec setProperty:value forKey:@"psStatusValue"];
+    return spec;
+}
+
+- (id)statusValue:(PSSpecifier *)specifier {
+    return [specifier propertyForKey:@"psStatusValue"];
 }
 
 - (NSArray *)specifiers {
     if (_specifiers) return _specifiers;
 
     NSArray *apps = [self userApplications];
+    NSMutableArray *specifiers = [NSMutableArray array];
 
-    PSSpecifier *group = [PSSpecifier emptyGroupSpecifier];
-    // Counts are surfaced on purpose: an empty pane otherwise looks identical
-    // whether the device has no apps or the lookup failed.
-    [group setProperty:[self footerText:apps.count] forKey:@"footerText"];
+    [specifiers addObject:[PSSpecifier groupSpecifierWithName:@"Status"]];
+    [specifiers addObject:PSStatusRow(self, @"LaunchServices",
+                                      _workspaceResolved ? @"OK" : @"unavailable")];
+    [specifiers addObject:PSStatusRow(self, @"Reported by system",
+                                      [@(_reportedCount) stringValue])];
+    [specifiers addObject:PSStatusRow(self, @"Listed here",
+                                      [@(apps.count) stringValue])];
 
-    NSMutableArray *specifiers = [NSMutableArray arrayWithObject:group];
+    PSSpecifier *appGroup = [PSSpecifier groupSpecifierWithName:@"Apps"];
+    [appGroup setProperty:@"Enabling an app takes effect the next time it "
+                          @"launches, so force-quit it afterwards. Apple's "
+                          @"own apps are deliberately absent: spoofing "
+                          @"identifiers inside system processes breaks "
+                          @"activation, push and iCloud."
+                   forKey:@"footerText"];
+    [specifiers addObject:appGroup];
 
     for (LSApplicationProxy *app in apps) {
         NSString *bundleID = app.applicationIdentifier;
