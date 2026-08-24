@@ -89,6 +89,31 @@ static id AVRewrite(id parameters, NSString *target) {
     return [rewritten isEqualToString:parameters] ? nil : rewritten;
 }
 
+// appendValue:forBuyParameter: never fires on this build - the whole parameter
+// string is set in one call - so the observed version has to be pulled back out
+// of it for the Settings pane to have anything to show.
+static void AVNoteVersion(id parameters) {
+    NSString *found = nil;
+
+    if ([parameters isKindOfClass:[NSDictionary class]]) {
+        id value = parameters[AVVersionKey];
+        if (value) found = [value description];
+    } else if ([parameters isKindOfClass:[NSString class]]) {
+        NSRegularExpression *regex = [NSRegularExpression
+            regularExpressionWithPattern:
+                [NSString stringWithFormat:@"%@=([0-9]+)", AVVersionKey]
+                                 options:0
+                                   error:NULL];
+        NSTextCheckingResult *match = [regex
+            firstMatchInString:parameters
+                       options:0
+                         range:NSMakeRange(0, [parameters length])];
+        if (match) found = [parameters substringWithRange:[match rangeAtIndex:1]];
+    }
+
+    if (found.length) AVRecordLastSeen(found);
+}
+
 #pragma mark - Discovery
 
 static void AVReportEnvironment(void) {
@@ -167,6 +192,7 @@ static void AVReportEnvironment(void) {
         %orig;
         return;
     }
+    AVNoteVersion(parameters);
     AVLog(@"[%@] ASD setBuyParameters (%@) : %@", AVProcess(),
           NSStringFromClass([parameters class]),
           AVTruncate(AVRedact(parameters), 700));
@@ -192,6 +218,7 @@ static void AVReportEnvironment(void) {
         %orig;
         return;
     }
+    AVNoteVersion(parameters);
     AVLog(@"[%@] AMS setBuyParams (%@) : %@", AVProcess(),
           NSStringFromClass([parameters class]),
           AVTruncate(AVRedact(parameters), 700));
@@ -217,6 +244,7 @@ static void AVReportEnvironment(void) {
         %orig;
         return;
     }
+    AVNoteVersion(parameters);
     AVLog(@"[%@] SS setBuyParameters : %@", AVProcess(),
           AVTruncate(AVRedact(parameters), 700));
 
