@@ -40,12 +40,36 @@ static NSString *const kPrefsPath =
 }
 
 + (NSString *)lastSeen {
+    // Preferences first: that directory is reachable from Settings for certain,
+    // where Library/Logs may not be.
+    NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:kPrefsPath];
+    id fromPrefs = prefs[@"LastSeenVersionId"];
+    if ([fromPrefs isKindOfClass:[NSString class]] && [fromPrefs length]) {
+        return fromPrefs;
+    }
+
     NSString *raw = [NSString stringWithContentsOfFile:[self lastSeenPath]
                                               encoding:NSUTF8StringEncoding
                                                  error:NULL];
     raw = [raw stringByTrimmingCharactersInSet:
            [NSCharacterSet whitespaceAndNewlineCharacterSet]];
     return raw.length ? raw : nil;
+}
+
+// Reported in the pane rather than swallowed: a sandbox denial and an empty
+// file are indistinguishable from a blank row, and guessing between them is
+// what has cost the most time here.
++ (NSString *)logReadStatus {
+    NSError *error = nil;
+    NSString *contents = [NSString stringWithContentsOfFile:[self logPath]
+                                                   encoding:NSUTF8StringEncoding
+                                                      error:&error];
+    if (contents) {
+        return [NSString stringWithFormat:@"%lu bytes",
+                (unsigned long)contents.length];
+    }
+    return error ? [NSString stringWithFormat:@"error %ld", (long)error.code]
+                 : @"unreadable";
 }
 
 + (NSArray *)logTail:(NSUInteger)count {
@@ -143,7 +167,8 @@ static PSSpecifier *AVButton(id target, NSString *label, SEL action) {
     // Distinguishes "never written" from "written but unreadable", which look
     // identical from the row above.
     [specs addObject:AVInfo(self, @"Record file",
-                            recorded ? @"present" : @"not created yet")];
+                            recorded ? @"present" : @"not visible")];
+    [specs addObject:AVInfo(self, @"Log", [[self class] logReadStatus])];
 
     [specs addObject:AVGroup(@"Override",
         @"Leave empty to observe only. Set a version id and the App Store will "

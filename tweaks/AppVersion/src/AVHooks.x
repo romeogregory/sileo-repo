@@ -111,7 +111,22 @@ static void AVNoteVersion(id parameters) {
         if (match) found = [parameters substringWithRange:[match rangeAtIndex:1]];
     }
 
-    if (found.length) AVRecordLastSeen(found);
+    if (!found.length) return;
+    AVRecordLastSeen(found);
+
+    // Also written into the preferences plist. Settings demonstrably reads that
+    // directory - it loads TargetVersionId from it - whereas Library/Logs may
+    // sit outside its sandbox, which would leave the pane blank however
+    // successfully this process writes there.
+    static NSString *lastWritten;
+    if ([lastWritten isEqualToString:found]) return;
+    lastWritten = [found copy];
+
+    NSMutableDictionary *prefs =
+        [NSMutableDictionary dictionaryWithContentsOfFile:kPrefsPath];
+    if (!prefs) prefs = [NSMutableDictionary dictionary];
+    prefs[@"LastSeenVersionId"] = found;
+    [prefs writeToFile:kPrefsPath atomically:YES];
 }
 
 #pragma mark - Discovery
