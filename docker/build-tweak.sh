@@ -14,8 +14,10 @@ staging="$(mktemp -d)"
 cp -a "$src/." "$staging/"
 cd "$staging"
 
-# Undo what the bind mount mangled.
+# Undo what the bind mount mangled. Without this, resources land in the .deb
+# as 0777 — world-writable files inside a package that installs as root.
 find . -type d -exec chmod 0755 {} +
+find . -type f -exec chmod 0644 {} +
 if [ -d layout/DEBIAN ]; then
   find layout/DEBIAN -type f -exec chmod 0755 {} +
 fi

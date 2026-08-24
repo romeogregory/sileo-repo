@@ -77,10 +77,23 @@ Client-side hooks cannot touch:
 So this defeats ad networks and analytics SDKs, which is what it is for. It does
 not defeat anything built on DeviceCheck or App Attest.
 
-## Not built yet
+## Settings UI
 
-The per-app toggle is plist-driven; there is no PreferenceLoader UI, so enabling
-an app means editing the file over SSH as above.
+`Settings -> Pseudonym` (a PreferenceLoader bundle shipped in the same package):
+
+- **Enabled** - global master switch.
+- **Apps** - one switch per installed app, built at runtime from
+  `LSApplicationWorkspace`. Apple's own apps are omitted rather than shown as
+  switches that silently do nothing, since the tweak refuses `com.apple.*`
+  regardless.
+- **Regenerate All Identities** - bumps `Generation` for every enabled app, so
+  each one meets a brand-new device on next launch. Confirmed before it runs,
+  because it signs you out of anything that stored a login.
+
+Changes apply on next launch: the tweak reads preferences once per process, so
+force-quit an app after toggling it.
+
+The SSH route below still works and is the faster way to script bulk changes.
 
 ## Building
 
