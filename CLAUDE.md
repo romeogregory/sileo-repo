@@ -73,6 +73,11 @@ python tools/build_repo.py
 # Serve the repo over HTTP for LAN testing against a real device
 python tools/build_repo.py --serve 8080
 
+# Compile a tweak. Theos cannot run natively on Windows, so this is the only
+# supported path. Build the image once (~3GB, mostly toolchain + iOS SDK).
+docker build -f docker/theos.Dockerfile -t theos-builder .
+docker run --rm -v "%cd%:/work" theos-builder tweaks/Pseudonym
+
 # Regenerate the 128x128 repo tile
 python tools/make_icon.py repo/CydiaIcon.png
 
@@ -157,5 +162,20 @@ payload to `/var/jb` is still unproven. To close it: install Hello World, then
 confirm over `issh` (user `root`, password `alpine`) that
 `/var/jb/usr/share/hello/hello.txt` exists.
 
-`tweaks/HelloTweak` has never been compiled — Theos needs the Docker path in
-`README.md` and that daemon is usually not running.
+Both tweaks now compile. `docker/theos.Dockerfile` is the build environment;
+three things about it are non-obvious and cost time to rediscover:
+
+- Theos refuses to install or run as root, but its installer shells out to
+  `sudo`, so the image needs an unprivileged user that *has* sudo.
+- `install-theos` prompts before fetching the toolchain, which a Docker build
+  cannot answer — the toolchain and SDK are pinned by URL instead.
+- Sources are copied into the container before building. Windows bind mounts
+  expose directories as 0777 and `dpkg-deb` rejects a `DEBIAN` directory
+  outside 0755-0775, so building in place fails on Windows hosts only.
+
+Theos reads maintainer scripts from `layout/DEBIAN/`, not `DEBIAN/`, and drops
+them silently if `rsync` is missing from the image.
+
+The `ERROR: Failed to convert input file.` line during packaging is benign:
+`libplist-utils` cannot parse the old-style ASCII plist that Logos filters use,
+and the file is copied unmodified regardless.

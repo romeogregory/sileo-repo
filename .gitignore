@@ -4,3 +4,4 @@ __pycache__/
 tweaks/*/.theos/
 tweaks/*/obj/
 tweaks/*/packages/
+.gstack/

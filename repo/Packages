@@ -14,3 +14,35 @@ Size: 806
 MD5sum: 006a32abebd2bda0fd2ef3335846ae73
 SHA1: 2a00d8018e2641b330665959422754e490c86ba4
 SHA256: 463d1566e45ee597418ab65c99af87c3aa908e045b592f7ad5b4b0dc3b4c89c6
+
+Package: com.romeo.hellotweak
+Name: HelloTweak
+Description: Scaffold for a compiled rootless tweak.
+Maintainer: Romeo <romeogregoryx@gmail.com>
+Author: Romeo <romeogregoryx@gmail.com>
+Section: Tweaks
+Depends: ellekit, firmware (>= 15.0)
+Architecture: iphoneos-arm64
+Version: 1.0.0
+Installed-Size: 184
+Filename: ./debs/com.romeo.hellotweak_1.0.0_iphoneos-arm64.deb
+Size: 3020
+MD5sum: ace8e57fea56a032f88ba25b33b07b80
+SHA1: 32dd0d3f15130d50c91d7cb14f45405e89da428c
+SHA256: 9b48b4810c1d6bd7dd0299332b71bc496bec3b2bb2dcb600d3ed6f048ff8ead8
+
+Package: com.romeo.pseudonym
+Name: Pseudonym
+Description: Per-app device identity. Each app sees a stable, coherent fake device instead of your real one.
+Maintainer: Romeo <romeogregoryx@gmail.com>
+Author: Romeo <romeogregoryx@gmail.com>
+Section: Tweaks
+Depends: ellekit, firmware (>= 15.0)
+Architecture: iphoneos-arm64
+Version: 1.0.0
+Installed-Size: 184
+Filename: ./debs/com.romeo.pseudonym_1.0.0_iphoneos-arm64.deb
+Size: 10138
+MD5sum: 23b05a16df5c777e9c5f4a65c9565db1
+SHA1: ce4113de72f7756ee50adb7cb9b7dbfb4ff7562b
+SHA256: 1eeea655739e81bcb0b46e2f25533c744300bd9dfd680e5ce8d15c5cc10f5dcd

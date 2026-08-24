@@ -1,0 +1,33 @@
+#!/bin/sh
+# Generate the per-device secret seed once, at install time.
+#
+# The tweak only ever READS this file. It cannot create it: injected into a
+# sandboxed app it has that app's sandbox, with no write access here.
+set -e
+
+PREFS_DIR=/var/jb/var/mobile/Library/Preferences
+PREFS="$PREFS_DIR/com.romeo.pseudonym.plist"
+
+mkdir -p "$PREFS_DIR"
+
+if [ ! -f "$PREFS" ]; then
+  SEED=$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64 | tr -d '\n')
+  cat > "$PREFS" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Seed</key>
+	<string>$SEED</string>
+	<key>Enabled</key>
+	<true/>
+	<key>Apps</key>
+	<dict/>
+</dict>
+</plist>
+PLIST
+  chown mobile:mobile "$PREFS"
+  chmod 600 "$PREFS"
+fi
+
+exit 0
