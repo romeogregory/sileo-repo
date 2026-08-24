@@ -1,1 +1,7 @@
-{ Filter = { Bundles = ( "com.apple.AppStore" ); }; }
+{
+    Filter = {
+        Bundles = ( "com.apple.AppStore" );
+        Executables = ( "itunesstored", "appstored", "storekitd" );
+        Mode = "Any";
+    };
+}

@@ -83,10 +83,10 @@ static NSString *AVRedact(NSString *parameters) {
 // anything the hooks depend on.
 static void AVReportEnvironment(void) {
     @try {
-        AVLog(@"bundle=%@ ios=%@ log=%@",
-              [[NSBundle mainBundle] bundleIdentifier],
-              [[NSProcessInfo processInfo] operatingSystemVersionString],
-              AVLogPath());
+        AVLog(@"process=%@ bundle=%@ ios=%@",
+              [[NSProcessInfo processInfo] processName],
+              [[NSBundle mainBundle] bundleIdentifier] ?: @"(none)",
+              [[NSProcessInfo processInfo] operatingSystemVersionString]);
         AVLog(@"TargetVersionId=%@ (unset means observe only)",
               AVTargetVersionId() ?: @"(none)");
 
@@ -109,28 +109,31 @@ static void AVReportEnvironment(void) {
                   AVTruncate([matches componentsJoinedByString:@", "], 1200));
         }
 
-        Class purchase = NSClassFromString(@"SSPurchase");
-        if (!purchase) {
-            AVLog(@"SSPurchase NOT PRESENT on this build");
-            return;
-        }
-        unsigned int methodCount = 0;
-        Method *methods = class_copyMethodList(purchase, &methodCount);
-        NSMutableArray *interesting = [NSMutableArray array];
-        for (unsigned int i = 0; i < methodCount; i++) {
-            const char *sel = sel_getName(method_getName(methods[i]));
-            if (!sel) continue;
-            if (strcasestr(sel, "buy") || strcasestr(sel, "param") ||
-                strcasestr(sel, "vrs") || strcasestr(sel, "version") ||
-                strcasestr(sel, "adam")) {
-                [interesting addObject:@(sel)];
+        for (NSString *className in @[@"SSPurchase", @"AMSPurchase",
+                                      @"AMSPurchaseInfo", @"ASDPurchase"]) {
+            Class cls = NSClassFromString(className);
+            if (!cls) {
+                AVLog(@"%@ NOT PRESENT here", className);
+                continue;
             }
+            unsigned int methodCount = 0;
+            Method *methods = class_copyMethodList(cls, &methodCount);
+            NSMutableArray *interesting = [NSMutableArray array];
+            for (unsigned int i = 0; i < methodCount; i++) {
+                const char *sel = sel_getName(method_getName(methods[i]));
+                if (!sel) continue;
+                if (strcasestr(sel, "buy") || strcasestr(sel, "param") ||
+                    strcasestr(sel, "vrs") || strcasestr(sel, "version") ||
+                    strcasestr(sel, "adam")) {
+                    [interesting addObject:@(sel)];
+                }
+            }
+            if (methods) free(methods);
+            [interesting sortUsingSelector:@selector(caseInsensitiveCompare:)];
+            AVLog(@"%@ (%lu of %u): %@", className,
+                  (unsigned long)interesting.count, methodCount,
+                  AVTruncate([interesting componentsJoinedByString:@", "], 900));
         }
-        if (methods) free(methods);
-        [interesting sortUsingSelector:@selector(caseInsensitiveCompare:)];
-        AVLog(@"SSPurchase selectors of interest (%lu of %u): %@",
-              (unsigned long)interesting.count, methodCount,
-              AVTruncate([interesting componentsJoinedByString:@", "], 1200));
     } @catch (NSException *exception) {
         AVLog(@"discovery threw %@: %@", exception.name, exception.reason);
     }
@@ -145,7 +148,7 @@ static void AVReportEnvironment(void) {
         %orig;
         return;
     }
-    AVLog(@"setBuyParameters IN  : %@", AVTruncate(AVRedact(parameters), 900));
+    AVLog(@"[%@] setBuyParameters IN  : %@", [[NSProcessInfo processInfo] processName], AVTruncate(AVRedact(parameters), 900));
 
     NSString *target = AVTargetVersionId();
     if (!target || !parameters.length) {
@@ -179,7 +182,7 @@ static void AVReportEnvironment(void) {
         return;
     }
 
-    AVLog(@"setBuyParameters OUT : %@", AVTruncate(AVRedact(rewritten), 900));
+    AVLog(@"[%@] setBuyParameters OUT : %@", [[NSProcessInfo processInfo] processName], AVTruncate(AVRedact(rewritten), 900));
     %orig(rewritten);
 }
 
@@ -231,7 +234,8 @@ static void AVReportEnvironment(void) {
             value = match ? [text substringWithRange:[match rangeAtIndex:1]]
                           : @"(present, unparsed)";
         }
-        AVLog(@"setHTTPBody %@ (%lu bytes) appExtVrsId=%@", self.URL.host,
+        AVLog(@"[%@] setHTTPBody %@ (%lu bytes) appExtVrsId=%@",
+              [[NSProcessInfo processInfo] processName], self.URL.host,
               (unsigned long)body.length, value);
     } @catch (NSException *exception) {
         AVLog(@"body log threw %@", exception.name);

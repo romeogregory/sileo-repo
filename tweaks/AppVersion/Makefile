@@ -4,7 +4,7 @@
 # thing and should not be entangled with the identity logic.
 TARGET := iphone:clang:latest:15.0
 THEOS_PACKAGE_SCHEME = rootless
-INSTALL_TARGET_PROCESSES = AppStore
+INSTALL_TARGET_PROCESSES = AppStore itunesstored appstored
 
 include $(THEOS)/makefiles/common.mk
 
