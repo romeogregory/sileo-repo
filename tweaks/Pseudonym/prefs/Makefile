@@ -3,7 +3,7 @@ include $(THEOS)/makefiles/common.mk
 THEOS_PACKAGE_SCHEME = rootless
 
 BUNDLE_NAME = PseudonymPrefs
-PseudonymPrefs_FILES = PSRootListController.m PSAppListController.m PSPrefsStore.m
+PseudonymPrefs_FILES = PSRootListController.m PSApps.m PSPrefsStore.m
 PseudonymPrefs_INSTALL_PATH = /Library/PreferenceBundles
 PseudonymPrefs_CFLAGS = -fobjc-arc
 PseudonymPrefs_FRAMEWORKS = UIKit

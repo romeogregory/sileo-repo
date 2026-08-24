@@ -78,3 +78,19 @@ Size: 20180
 MD5sum: 113d14ff39198797bcdb3ac06a1948e3
 SHA1: c7015f2e40ed37e7bfa0064324449881fbd75113
 SHA256: 92bbd117b7ee3272b037eaf96fdc5a2f8d05e778f5cc0f0218be23cf9e815971
+
+Package: com.romeo.pseudonym
+Name: Pseudonym
+Description: Per-app device identity. Each app sees a stable, coherent fake device instead of your real one.
+Maintainer: Romeo <romeogregoryx@gmail.com>
+Author: Romeo <romeogregoryx@gmail.com>
+Section: Tweaks
+Depends: ellekit, preferenceloader, firmware (>= 15.0)
+Architecture: iphoneos-arm64
+Version: 1.4.0
+Installed-Size: 376
+Filename: ./debs/com.romeo.pseudonym_1.4.0_iphoneos-arm64.deb
+Size: 20862
+MD5sum: 6d7ba1654c23e442f6e192d4919687f5
+SHA1: 6d23499edf6262535dcb31ef4558c6868716f536
+SHA256: 7bd40c55cda21172e6ea1e5921db1091f61477e436c3ed3177e71a8b7bee33b5
