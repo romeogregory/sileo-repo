@@ -14,3 +14,6 @@ AppVersion_CFLAGS = -fobjc-arc -Isrc
 AppVersion_FRAMEWORKS = Foundation
 
 include $(THEOS_MAKE_PATH)/tweak.mk
+
+SUBPROJECTS += prefs
+include $(THEOS_MAKE_PATH)/aggregate.mk

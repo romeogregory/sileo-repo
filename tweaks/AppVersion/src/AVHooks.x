@@ -147,6 +147,7 @@ static void AVReportEnvironment(void) {
     }
 
     NSString *target = AVTargetVersionId();
+    AVRecordLastSeen([value description]);
     AVLog(@"[%@] ASD append %@=%@%@", AVProcess(), parameter, value,
           target ? [NSString stringWithFormat:@" -> %@", target] : @"");
 

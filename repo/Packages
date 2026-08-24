@@ -1,18 +1,18 @@
 Package: com.romeo.appversion
 Name: AppVersion
-Description: Discovery build. Logs how the App Store names the app version it is asking Apple for, so a downgrade hook can be written against what is actually there.
+Description: Choose which version of an app the App Store installs. Configured in Settings; only reaches versions your Apple ID can already obtain.
 Maintainer: Romeo <romeogregoryx@gmail.com>
 Author: Romeo <romeogregoryx@gmail.com>
 Section: Tweaks
-Depends: ellekit, firmware (>= 15.0)
+Depends: ellekit, preferenceloader, firmware (>= 15.0)
 Architecture: iphoneos-arm64
-Version: 0.5.0
-Installed-Size: 188
-Filename: ./debs/com.romeo.appversion_0.5.0_iphoneos-arm64.deb
-Size: 13162
-MD5sum: 8f556c51b574cb602b930557e6571179
-SHA1: fa9f0cdeb1b11b4f8937d3f8bdfaad5f0380f379
-SHA256: 09aa1a42ebfed1c20cf6daa5c16d4ffbfb04a35c2fd76d00e29bb7c05dccf186
+Version: 0.6.0
+Installed-Size: 376
+Filename: ./debs/com.romeo.appversion_0.6.0_iphoneos-arm64.deb
+Size: 19726
+MD5sum: 651d5ae5b43577555a09f5f4fe18eedb
+SHA1: 414f5689a8c4e5f3f791846d956daa0ce33bcbca
+SHA256: 294547a1283fcf655e0c63892b0552893427e15b24e5efc35418a692325e9571
 
 Package: com.romeo.hello
 Name: Hello World

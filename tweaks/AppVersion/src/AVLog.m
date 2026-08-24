@@ -75,3 +75,26 @@ void AVLog(NSString *format, ...) {
         close(fd);
     });
 }
+
+NSString *AVLastSeenPath(void) {
+    return [[AVLogPath() stringByDeletingLastPathComponent]
+            stringByAppendingPathComponent:@"lastseen.txt"];
+}
+
+void AVRecordLastSeen(NSString *value) {
+    if (!value.length) return;
+
+    // Written as a plain file next to the log rather than into the preferences
+    // plist: the App Store's sandbox demonstrably permits writing here, and
+    // writing to Preferences from this process is not something to rely on.
+    static NSString *previous;
+    if ([previous isEqualToString:value]) return;
+    previous = [value copy];
+
+    NSData *data = [value dataUsingEncoding:NSUTF8StringEncoding];
+    int fd = open([AVLastSeenPath() fileSystemRepresentation],
+                  O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
+    if (fd < 0) return;
+    write(fd, data.bytes, data.length);
+    close(fd);
+}
