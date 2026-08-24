@@ -1,6 +1,6 @@
 Package: com.romeo.appversion
 Name: AppVersion
-Version: 0.4.0
+Version: 0.5.0
 Architecture: iphoneos-arm64
 Description: Discovery build. Logs how the App Store names the app version it is asking Apple for, so a downgrade hook can be written against what is actually there.
 Maintainer: Romeo <romeogregoryx@gmail.com>

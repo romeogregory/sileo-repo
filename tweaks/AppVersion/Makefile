@@ -9,7 +9,7 @@ INSTALL_TARGET_PROCESSES = AppStore itunesstored appstored
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = AppVersion
-AppVersion_FILES = src/AVHooks.x src/AVLog.m
+AppVersion_FILES = src/AVHooks.x src/AVLog.m src/AVRedact.m
 AppVersion_CFLAGS = -fobjc-arc -Isrc
 AppVersion_FRAMEWORKS = Foundation
 

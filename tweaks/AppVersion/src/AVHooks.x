@@ -1,20 +1,32 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 #import "AVLog.h"
+#import "AVRedact.h"
 
 // Declared for the compiler only. Logos resolves hooked classes at runtime via
-// objc_getClass, so naming a private class here creates no link dependency and
-// the hook simply does not install if the class is absent on this iOS build.
+// objc_getClass, so naming private classes here creates no link dependency and
+// a hook simply does not install if its class is absent on this build.
 @interface SSPurchase : NSObject
 @property (nonatomic, copy) NSString *buyParameters;
+@end
+
+// ASD is AppStoreDaemon. appendValue:forBuyParameter: is a named setter, which
+// makes it the cleanest interception point on this build: the version can be
+// substituted by key with no string surgery at all.
+@interface ASDPurchase : NSObject
+@property (nonatomic, copy) id buyParameters;
+- (void)appendValue:(id)value forBuyParameter:(NSString *)parameter;
+@end
+
+@interface AMSPurchaseInfo : NSObject
+@property (nonatomic, copy) id buyParams;
 @end
 
 static NSString *const kPrefsPath =
     @"/var/jb/var/mobile/Library/Preferences/com.romeo.appversion.plist";
 
-// Kill switch. Version 0.1.0 stalled the App Store, and recovering meant
-// uninstalling the package from Sileo. Touching this file disables every hook
-// on next launch, which is a far cheaper way out of the same situation.
+// Kill switch. 0.1.0 stalled the App Store and recovering meant uninstalling
+// from Sileo; touching this file makes every hook inert on next launch instead.
 static NSString *const kDisableFlag =
     @"/var/jb/var/mobile/Library/Logs/AppVersion/appversion.off";
 
@@ -35,79 +47,57 @@ static NSString *AVTargetVersionId(void) {
     return nil;
 }
 
+static NSString *AVProcess(void) {
+    return [[NSProcessInfo processInfo] processName];
+}
+
 static NSString *AVTruncate(NSString *text, NSUInteger limit) {
     if (text.length <= limit) return text;
     return [[text substringToIndex:limit] stringByAppendingString:@" ...[cut]"];
 }
 
-// Buy parameters carry Apple account identifiers - guid, DSID, session tokens.
-// The discovery value here is the SHAPE of the request, not the values, so key
-// names and lengths are kept and everything outside a tight allowlist is
-// dropped. Writing account identifiers to disk to learn a field name would be a
-// bad trade.
-static NSString *AVRedact(NSString *parameters) {
-    if (!parameters.length) return @"(empty)";
+// Returns a rewritten copy of the same type, or nil when nothing changed.
+static id AVRewrite(id parameters, NSString *target) {
+    if (!target.length) return nil;
 
-    static NSSet *safe;
-    static dispatch_once_t token;
-    dispatch_once(&token, ^{
-        // Non-secret and directly useful: the version we target, the public App
-        // Store id of the app, and the product type.
-        safe = [NSSet setWithArray:@[@"appExtVrsId", @"salableAdamId",
-                                     @"productType"]];
-    });
-
-    NSMutableArray *out = [NSMutableArray array];
-    for (NSString *field in [parameters componentsSeparatedByString:@"&"]) {
-        NSRange split = [field rangeOfString:@"="];
-        if (split.location == NSNotFound) {
-            [out addObject:field];
-            continue;
-        }
-        NSString *key = [field substringToIndex:split.location];
-        NSString *value = [field substringFromIndex:split.location + 1];
-        if ([safe containsObject:key]) {
-            [out addObject:field];
-        } else {
-            [out addObject:[NSString stringWithFormat:@"%@=<redacted:%lu>",
-                            key, (unsigned long)value.length]];
-        }
+    if ([parameters isKindOfClass:[NSDictionary class]]) {
+        id existing = parameters[AVVersionKey];
+        if (!existing) return nil;
+        NSMutableDictionary *copy = [parameters mutableCopy];
+        // Match the existing type: these dictionaries hold numbers on some
+        // paths and strings on others, and a mismatch is rejected server-side.
+        copy[AVVersionKey] = [existing isKindOfClass:[NSNumber class]]
+            ? (id)@([target longLongValue]) : (id)target;
+        return copy;
     }
-    return [out componentsJoinedByString:@"&"];
+
+    if (![parameters isKindOfClass:[NSString class]]) return nil;
+
+    NSRegularExpression *regex = [NSRegularExpression
+        regularExpressionWithPattern:
+            [NSString stringWithFormat:@"%@=[0-9]+", AVVersionKey]
+                             options:0
+                               error:NULL];
+    if (!regex) return nil;
+
+    NSString *rewritten = [regex
+        stringByReplacingMatchesInString:parameters
+                                 options:0
+                                   range:NSMakeRange(0, [parameters length])
+                            withTemplate:[NSString stringWithFormat:@"%@=%@",
+                                          AVVersionKey, target]];
+    return [rewritten isEqualToString:parameters] ? nil : rewritten;
 }
 
 #pragma mark - Discovery
 
-// Deliberately NOT run from %ctor. Enumerating every registered class before
-// the app has started delays launch, and this is diagnostics rather than
-// anything the hooks depend on.
 static void AVReportEnvironment(void) {
     @try {
-        AVLog(@"process=%@ bundle=%@ ios=%@",
-              [[NSProcessInfo processInfo] processName],
+        AVLog(@"process=%@ bundle=%@ ios=%@", AVProcess(),
               [[NSBundle mainBundle] bundleIdentifier] ?: @"(none)",
               [[NSProcessInfo processInfo] operatingSystemVersionString]);
-        AVLog(@"TargetVersionId=%@ (unset means observe only)",
-              AVTargetVersionId() ?: @"(none)");
-
-        unsigned int count = 0;
-        Class *classes = objc_copyClassList(&count);
-        if (classes) {
-            NSMutableArray *matches = [NSMutableArray array];
-            for (unsigned int i = 0; i < count; i++) {
-                const char *raw = class_getName(classes[i]);
-                // Compared as C strings: NSStringFromClass on tens of thousands
-                // of classes allocates tens of thousands of objects for nothing.
-                if (raw && strcasestr(raw, "purchase")) {
-                    [matches addObject:@(raw)];
-                }
-            }
-            free(classes);
-            [matches sortUsingSelector:@selector(caseInsensitiveCompare:)];
-            AVLog(@"classes matching 'purchase' (%lu of %u): %@",
-                  (unsigned long)matches.count, count,
-                  AVTruncate([matches componentsJoinedByString:@", "], 1200));
-        }
+        AVLog(@"TargetVersionId=%@",
+              AVTargetVersionId() ?: @"(none, observe only)");
 
         for (NSString *className in @[@"SSPurchase", @"AMSPurchase",
                                       @"AMSPurchaseInfo", @"ASDPurchase"]) {
@@ -123,8 +113,7 @@ static void AVReportEnvironment(void) {
                 const char *sel = sel_getName(method_getName(methods[i]));
                 if (!sel) continue;
                 if (strcasestr(sel, "buy") || strcasestr(sel, "param") ||
-                    strcasestr(sel, "vrs") || strcasestr(sel, "version") ||
-                    strcasestr(sel, "adam")) {
+                    strcasestr(sel, "vrs") || strcasestr(sel, "version")) {
                     [interesting addObject:@(sel)];
                 }
             }
@@ -132,14 +121,93 @@ static void AVReportEnvironment(void) {
             [interesting sortUsingSelector:@selector(caseInsensitiveCompare:)];
             AVLog(@"%@ (%lu of %u): %@", className,
                   (unsigned long)interesting.count, methodCount,
-                  AVTruncate([interesting componentsJoinedByString:@", "], 900));
+                  AVTruncate([interesting componentsJoinedByString:@", "], 700));
         }
     } @catch (NSException *exception) {
         AVLog(@"discovery threw %@: %@", exception.name, exception.reason);
     }
 }
 
-#pragma mark - Hooks
+#pragma mark - ASDPurchase, the likely path on iOS 16
+
+%hook ASDPurchase
+
+- (void)appendValue:(id)value forBuyParameter:(NSString *)parameter {
+    if (!AVEnabled()) {
+        %orig;
+        return;
+    }
+
+    if (![parameter isEqualToString:AVVersionKey]) {
+        // Only the field name for everything else: those values are account
+        // state and there is no reason to write them to disk.
+        AVLog(@"[%@] ASD append %@", AVProcess(), parameter);
+        %orig;
+        return;
+    }
+
+    NSString *target = AVTargetVersionId();
+    AVLog(@"[%@] ASD append %@=%@%@", AVProcess(), parameter, value,
+          target ? [NSString stringWithFormat:@" -> %@", target] : @"");
+
+    if (!target.length) {
+        %orig;
+        return;
+    }
+    // Substituting by key, with no string surgery. This is why ASDPurchase is
+    // the right hook rather than rewriting a serialised parameter blob.
+    id replacement = [value isKindOfClass:[NSNumber class]]
+        ? (id)@([target longLongValue]) : (id)target;
+    %orig(replacement, parameter);
+}
+
+- (void)setBuyParameters:(id)parameters {
+    if (!AVEnabled()) {
+        %orig;
+        return;
+    }
+    AVLog(@"[%@] ASD setBuyParameters (%@) : %@", AVProcess(),
+          NSStringFromClass([parameters class]),
+          AVTruncate(AVRedact(parameters), 700));
+
+    id rewritten = AVRewrite(parameters, AVTargetVersionId());
+    if (!rewritten) {
+        %orig;
+        return;
+    }
+    AVLog(@"[%@] ASD rewritten : %@", AVProcess(),
+          AVTruncate(AVRedact(rewritten), 700));
+    %orig(rewritten);
+}
+
+%end
+
+#pragma mark - AppleMediaServices
+
+%hook AMSPurchaseInfo
+
+- (void)setBuyParams:(id)parameters {
+    if (!AVEnabled()) {
+        %orig;
+        return;
+    }
+    AVLog(@"[%@] AMS setBuyParams (%@) : %@", AVProcess(),
+          NSStringFromClass([parameters class]),
+          AVTruncate(AVRedact(parameters), 700));
+
+    id rewritten = AVRewrite(parameters, AVTargetVersionId());
+    if (!rewritten) {
+        %orig;
+        return;
+    }
+    AVLog(@"[%@] AMS rewritten : %@", AVProcess(),
+          AVTruncate(AVRedact(rewritten), 700));
+    %orig(rewritten);
+}
+
+%end
+
+#pragma mark - StoreServices, the pre-iOS 16 path
 
 %hook SSPurchase
 
@@ -148,56 +216,29 @@ static void AVReportEnvironment(void) {
         %orig;
         return;
     }
-    AVLog(@"[%@] setBuyParameters IN  : %@", [[NSProcessInfo processInfo] processName], AVTruncate(AVRedact(parameters), 900));
+    AVLog(@"[%@] SS setBuyParameters : %@", AVProcess(),
+          AVTruncate(AVRedact(parameters), 700));
 
-    NSString *target = AVTargetVersionId();
-    if (!target || !parameters.length) {
+    id rewritten = AVRewrite(parameters, AVTargetVersionId());
+    if (!rewritten) {
         %orig;
         return;
     }
-
-    // The parameters are a key=value string, so this is a substitution rather
-    // than a structured edit. Bounded to digits so it cannot eat the next field.
-    NSError *error = nil;
-    NSRegularExpression *regex = [NSRegularExpression
-        regularExpressionWithPattern:@"appExtVrsId=[0-9]+"
-                             options:0
-                               error:&error];
-    if (!regex) {
-        AVLog(@"regex failed: %@", error.localizedDescription);
-        %orig;
-        return;
-    }
-
-    NSString *rewritten = [regex
-        stringByReplacingMatchesInString:parameters
-                                 options:0
-                                   range:NSMakeRange(0, parameters.length)
-                            withTemplate:[NSString stringWithFormat:
-                                          @"appExtVrsId=%@", target]];
-
-    if ([rewritten isEqualToString:parameters]) {
-        AVLog(@"no appExtVrsId field found, left unchanged");
-        %orig;
-        return;
-    }
-
-    AVLog(@"[%@] setBuyParameters OUT : %@", [[NSProcessInfo processInfo] processName], AVTruncate(AVRedact(rewritten), 900));
+    AVLog(@"[%@] SS rewritten : %@", AVProcess(),
+          AVTruncate(AVRedact(rewritten), 700));
     %orig(rewritten);
 }
 
 %end
 
+#pragma mark - Fallback
+
 %hook NSMutableURLRequest
 
 - (void)setHTTPBody:(NSData *)body {
-    // Version 0.1.0 stringified every body and plist-parsed whatever was not
-    // UTF-8, then searched the description. On a process that makes as many
-    // requests as the App Store that was enough to stall it completely.
-    //
-    // This is now a raw byte search with no allocation, skipped entirely for
-    // bodies too large to be a buy request. Nothing is decoded unless the key is
-    // actually present, which is rare.
+    // A raw byte search with no allocation, skipped for bodies too large to be
+    // a buy request. 0.1.0 stringified and plist-parsed every body here and
+    // stalled the App Store outright.
     if (!AVEnabled() || body.length == 0 || body.length > 65536) {
         %orig;
         return;
@@ -206,39 +247,14 @@ static void AVReportEnvironment(void) {
     static NSData *needle;
     static dispatch_once_t token;
     dispatch_once(&token, ^{
-        needle = [@"appExtVrsId" dataUsingEncoding:NSASCIIStringEncoding];
+        needle = [AVVersionKey dataUsingEncoding:NSASCIIStringEncoding];
     });
 
-    NSRange found = [body rangeOfData:needle
-                              options:0
-                                range:NSMakeRange(0, body.length)];
-    if (found.location == NSNotFound) {
-        %orig;
-        return;
-    }
-
-    @try {
-        // The body around this key is request state, not something worth
-        // writing to disk. Only the field we came for is recorded.
-        NSString *text = [[NSString alloc] initWithData:body
-                                               encoding:NSUTF8StringEncoding];
-        NSString *value = @"(binary)";
-        if (text) {
-            NSRegularExpression *regex = [NSRegularExpression
-                regularExpressionWithPattern:@"appExtVrsId[=\":< ]+([0-9]+)"
-                                     options:0
-                                       error:NULL];
-            NSTextCheckingResult *match =
-                [regex firstMatchInString:text options:0
-                                    range:NSMakeRange(0, text.length)];
-            value = match ? [text substringWithRange:[match rangeAtIndex:1]]
-                          : @"(present, unparsed)";
-        }
-        AVLog(@"[%@] setHTTPBody %@ (%lu bytes) appExtVrsId=%@",
-              [[NSProcessInfo processInfo] processName], self.URL.host,
-              (unsigned long)body.length, value);
-    } @catch (NSException *exception) {
-        AVLog(@"body log threw %@", exception.name);
+    if ([body rangeOfData:needle
+                  options:0
+                    range:NSMakeRange(0, body.length)].location != NSNotFound) {
+        AVLog(@"[%@] setHTTPBody %@ carries %@ (%lu bytes)", AVProcess(),
+              self.URL.host, AVVersionKey, (unsigned long)body.length);
     }
     %orig;
 }
@@ -252,7 +268,8 @@ static void AVReportEnvironment(void) {
     }
     AVLog(@"==== AppVersion loaded ====");
 
-    // Off the launch path. The App Store gets to start before any of this runs.
+    // Off the launch path: this is diagnostics, and enumerating every
+    // registered class before the app starts delays it.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
                    dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         AVReportEnvironment();
