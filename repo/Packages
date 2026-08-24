@@ -14,6 +14,22 @@ MD5sum: a9b521a87112afad772bb9d6945619c5
 SHA1: 96ea3677d4c836d20a7f422a8eca38ec5edea2eb
 SHA256: d5889d8dc58a87f40e21824b1ac7115dc00c8b5c09b4dc4afa4ccfa73cf11840
 
+Package: com.romeo.appversion
+Name: AppVersion
+Description: Discovery build. Logs how the App Store names the app version it is asking Apple for, so a downgrade hook can be written against what is actually there.
+Maintainer: Romeo <romeogregoryx@gmail.com>
+Author: Romeo <romeogregoryx@gmail.com>
+Section: Tweaks
+Depends: ellekit, firmware (>= 15.0)
+Architecture: iphoneos-arm64
+Version: 0.2.0
+Installed-Size: 188
+Filename: ./debs/com.romeo.appversion_0.2.0_iphoneos-arm64.deb
+Size: 9962
+MD5sum: a2612e2a5ba07dccc543bb94090b72f7
+SHA1: 83c42a646c6187498617b8d35b0ee1db9915e718
+SHA256: efcbe0b33eb4863803c266daf534fa788c5d16abfcb60b61372b9ff2e2923cb1
+
 Package: com.romeo.hello
 Name: Hello World
 Version: 1.0.0

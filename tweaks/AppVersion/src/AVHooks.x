@@ -12,9 +12,20 @@
 static NSString *const kPrefsPath =
     @"/var/jb/var/mobile/Library/Preferences/com.romeo.appversion.plist";
 
-// Optional. Discovery works with this unset; if setBuyParameters turns out to be
-// the right hook, setting it makes this build the working feature too rather
-// than requiring another round trip.
+// Kill switch. Version 0.1.0 stalled the App Store, and recovering meant
+// uninstalling the package from Sileo. Touching this file disables every hook
+// on next launch, which is a far cheaper way out of the same situation.
+static NSString *const kDisableFlag = @"/var/jb/tmp/appversion.off";
+
+static BOOL AVEnabled(void) {
+    static BOOL enabled;
+    static dispatch_once_t token;
+    dispatch_once(&token, ^{
+        enabled = ![[NSFileManager defaultManager] fileExistsAtPath:kDisableFlag];
+    });
+    return enabled;
+}
+
 static NSString *AVTargetVersionId(void) {
     NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:kPrefsPath];
     id value = prefs[@"TargetVersionId"];
@@ -30,55 +41,62 @@ static NSString *AVTruncate(NSString *text, NSUInteger limit) {
 
 #pragma mark - Discovery
 
-// Which classes actually exist on this build is the thing I cannot determine
-// from a Windows box, so the tweak reports it instead of me guessing.
-static void AVReportClasses(NSString *needle) {
-    unsigned int count = 0;
-    Class *classes = objc_copyClassList(&count);
-    if (!classes) return;
+// Deliberately NOT run from %ctor. Enumerating every registered class before
+// the app has started delays launch, and this is diagnostics rather than
+// anything the hooks depend on.
+static void AVReportEnvironment(void) {
+    @try {
+        AVLog(@"bundle=%@ ios=%@ log=%@",
+              [[NSBundle mainBundle] bundleIdentifier],
+              [[NSProcessInfo processInfo] operatingSystemVersionString],
+              AVLogPath());
+        AVLog(@"TargetVersionId=%@ (unset means observe only)",
+              AVTargetVersionId() ?: @"(none)");
 
-    NSMutableArray *matches = [NSMutableArray array];
-    for (unsigned int i = 0; i < count; i++) {
-        NSString *name = NSStringFromClass(classes[i]);
-        if ([name rangeOfString:needle
-                        options:NSCaseInsensitiveSearch].location != NSNotFound) {
-            [matches addObject:name];
+        unsigned int count = 0;
+        Class *classes = objc_copyClassList(&count);
+        if (classes) {
+            NSMutableArray *matches = [NSMutableArray array];
+            for (unsigned int i = 0; i < count; i++) {
+                const char *raw = class_getName(classes[i]);
+                // Compared as C strings: NSStringFromClass on tens of thousands
+                // of classes allocates tens of thousands of objects for nothing.
+                if (raw && strcasestr(raw, "purchase")) {
+                    [matches addObject:@(raw)];
+                }
+            }
+            free(classes);
+            [matches sortUsingSelector:@selector(caseInsensitiveCompare:)];
+            AVLog(@"classes matching 'purchase' (%lu of %u): %@",
+                  (unsigned long)matches.count, count,
+                  AVTruncate([matches componentsJoinedByString:@", "], 1200));
         }
-    }
-    free(classes);
 
-    [matches sortUsingSelector:@selector(caseInsensitiveCompare:)];
-    AVLog(@"classes matching '%@' (%lu): %@", needle,
-          (unsigned long)matches.count,
-          AVTruncate([matches componentsJoinedByString:@", "], 1200));
-}
-
-static void AVReportSelectors(NSString *className, NSArray *needles) {
-    Class cls = NSClassFromString(className);
-    if (!cls) {
-        AVLog(@"class %@ NOT PRESENT", className);
-        return;
-    }
-
-    unsigned int count = 0;
-    Method *methods = class_copyMethodList(cls, &count);
-    NSMutableArray *interesting = [NSMutableArray array];
-    for (unsigned int i = 0; i < count; i++) {
-        NSString *name = NSStringFromSelector(method_getName(methods[i]));
-        for (NSString *needle in needles) {
-            if ([name rangeOfString:needle
-                            options:NSCaseInsensitiveSearch].location != NSNotFound) {
-                [interesting addObject:name];
-                break;
+        Class purchase = NSClassFromString(@"SSPurchase");
+        if (!purchase) {
+            AVLog(@"SSPurchase NOT PRESENT on this build");
+            return;
+        }
+        unsigned int methodCount = 0;
+        Method *methods = class_copyMethodList(purchase, &methodCount);
+        NSMutableArray *interesting = [NSMutableArray array];
+        for (unsigned int i = 0; i < methodCount; i++) {
+            const char *sel = sel_getName(method_getName(methods[i]));
+            if (!sel) continue;
+            if (strcasestr(sel, "buy") || strcasestr(sel, "param") ||
+                strcasestr(sel, "vrs") || strcasestr(sel, "version") ||
+                strcasestr(sel, "adam")) {
+                [interesting addObject:@(sel)];
             }
         }
+        if (methods) free(methods);
+        [interesting sortUsingSelector:@selector(caseInsensitiveCompare:)];
+        AVLog(@"SSPurchase selectors of interest (%lu of %u): %@",
+              (unsigned long)interesting.count, methodCount,
+              AVTruncate([interesting componentsJoinedByString:@", "], 1200));
+    } @catch (NSException *exception) {
+        AVLog(@"discovery threw %@: %@", exception.name, exception.reason);
     }
-    if (methods) free(methods);
-
-    [interesting sortUsingSelector:@selector(caseInsensitiveCompare:)];
-    AVLog(@"%@ selectors of interest (%lu of %u): %@", className,
-          (unsigned long)interesting.count, count,
-          AVTruncate([interesting componentsJoinedByString:@", "], 1200));
 }
 
 #pragma mark - Hooks
@@ -86,6 +104,10 @@ static void AVReportSelectors(NSString *className, NSArray *needles) {
 %hook SSPurchase
 
 - (void)setBuyParameters:(NSString *)parameters {
+    if (!AVEnabled()) {
+        %orig;
+        return;
+    }
     AVLog(@"setBuyParameters IN  : %@", AVTruncate(parameters, 900));
 
     NSString *target = AVTargetVersionId();
@@ -107,13 +129,12 @@ static void AVReportSelectors(NSString *className, NSArray *needles) {
         return;
     }
 
-    NSString *replacement =
-        [NSString stringWithFormat:@"appExtVrsId=%@", target];
     NSString *rewritten = [regex
         stringByReplacingMatchesInString:parameters
                                  options:0
                                    range:NSMakeRange(0, parameters.length)
-                            withTemplate:replacement];
+                            withTemplate:[NSString stringWithFormat:
+                                          @"appExtVrsId=%@", target]];
 
     if ([rewritten isEqualToString:parameters]) {
         AVLog(@"no appExtVrsId field found, left unchanged");
@@ -130,26 +151,40 @@ static void AVReportSelectors(NSString *className, NSArray *needles) {
 %hook NSMutableURLRequest
 
 - (void)setHTTPBody:(NSData *)body {
-    // Matched by content, not by host or path. Apple has relocated these
-    // endpoints before, and a filter that is subtly out of date is
-    // indistinguishable from a request that never happens.
-    if (body.length > 0 && body.length < 262144) {
+    // Version 0.1.0 stringified every body and plist-parsed whatever was not
+    // UTF-8, then searched the description. On a process that makes as many
+    // requests as the App Store that was enough to stall it completely.
+    //
+    // This is now a raw byte search with no allocation, skipped entirely for
+    // bodies too large to be a buy request. Nothing is decoded unless the key is
+    // actually present, which is rare.
+    if (!AVEnabled() || body.length == 0 || body.length > 65536) {
+        %orig;
+        return;
+    }
+
+    static NSData *needle;
+    static dispatch_once_t token;
+    dispatch_once(&token, ^{
+        needle = [@"appExtVrsId" dataUsingEncoding:NSASCIIStringEncoding];
+    });
+
+    NSRange found = [body rangeOfData:needle
+                              options:0
+                                range:NSMakeRange(0, body.length)];
+    if (found.location == NSNotFound) {
+        %orig;
+        return;
+    }
+
+    @try {
         NSString *text = [[NSString alloc] initWithData:body
                                                encoding:NSUTF8StringEncoding];
-        if (text && [text containsString:@"appExtVrsId"]) {
-            AVLog(@"setHTTPBody text %@ : %@", self.URL.host,
-                  AVTruncate(text, 900));
-        } else {
-            id plist = [NSPropertyListSerialization propertyListWithData:body
-                                                                options:0
-                                                                 format:NULL
-                                                                  error:NULL];
-            NSString *described = plist ? [plist description] : nil;
-            if (described && [described containsString:@"appExtVrsId"]) {
-                AVLog(@"setHTTPBody plist %@ : %@", self.URL.host,
-                      AVTruncate(described, 900));
-            }
-        }
+        AVLog(@"setHTTPBody %@ (%lu bytes) : %@", self.URL.host,
+              (unsigned long)body.length,
+              text ? AVTruncate(text, 900) : @"(binary, key present)");
+    } @catch (NSException *exception) {
+        AVLog(@"body log threw %@", exception.name);
     }
     %orig;
 }
@@ -157,17 +192,15 @@ static void AVReportSelectors(NSString *className, NSArray *needles) {
 %end
 
 %ctor {
+    if (!AVEnabled()) {
+        NSLog(@"[AppVersion] disabled by %@", kDisableFlag);
+        return;
+    }
     AVLog(@"==== AppVersion loaded ====");
-    AVLog(@"bundle=%@ ios=%@ log=%@",
-          [[NSBundle mainBundle] bundleIdentifier],
-          [[NSProcessInfo processInfo] operatingSystemVersionString],
-          AVLogPath());
 
-    NSString *target = AVTargetVersionId();
-    AVLog(@"TargetVersionId=%@ (unset means observe only)",
-          target ?: @"(none)");
-
-    AVReportClasses(@"purchase");
-    AVReportSelectors(@"SSPurchase",
-                      @[@"buy", @"param", @"vrs", @"version", @"adam"]);
+    // Off the launch path. The App Store gets to start before any of this runs.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
+                   dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        AVReportEnvironment();
+    });
 }
