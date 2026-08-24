@@ -1,0 +1,10 @@
+# Force LF everywhere. These files are consumed by Linux tooling (make, dpkg)
+# and by APT-style parsers, both of which mishandle CRLF.
+* text=auto eol=lf
+
+# Never touch generated or packaged binaries.
+*.deb  binary
+*.png  binary
+*.gz   binary
+*.bz2  binary
+*.xz   binary
