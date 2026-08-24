@@ -5,3 +5,6 @@ tweaks/*/.theos/
 tweaks/*/obj/
 tweaks/*/packages/
 .gstack/
+
+# Third-party binary, 33MB, fetched on demand. See tools/README-ipatool.md
+tools/bin/
