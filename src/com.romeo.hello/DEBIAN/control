@@ -1,0 +1,10 @@
+Package: com.romeo.hello
+Name: Hello World
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: A minimal package that proves the repo pipeline works end to end.
+Maintainer: Romeo <romeogregoryx@gmail.com>
+Author: Romeo <romeogregoryx@gmail.com>
+Section: Utilities
+Depends: firmware (>= 15.0)
+Tag: role::hacker

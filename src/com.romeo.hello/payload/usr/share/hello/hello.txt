@@ -1,0 +1,4 @@
+If you are reading this on the phone, the whole chain worked:
+build -> index -> host -> Sileo -> install.
+
+Installed to /var/jb/usr/share/hello/hello.txt

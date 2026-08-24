@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+# Theos build output - the shipped .deb goes in repo/debs/ instead
+tweaks/*/.theos/
+tweaks/*/obj/
+tweaks/*/packages/

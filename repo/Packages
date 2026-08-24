@@ -1,0 +1,16 @@
+Package: com.romeo.hello
+Name: Hello World
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: A minimal package that proves the repo pipeline works end to end.
+Maintainer: Romeo <romeogregoryx@gmail.com>
+Author: Romeo <romeogregoryx@gmail.com>
+Section: Utilities
+Depends: firmware (>= 15.0)
+Tag: role::hacker
+Installed-Size: 1
+Filename: ./debs/com.romeo.hello_1.0.0_iphoneos-arm64.deb
+Size: 806
+MD5sum: 006a32abebd2bda0fd2ef3335846ae73
+SHA1: 2a00d8018e2641b330665959422754e490c86ba4
+SHA256: 463d1566e45ee597418ab65c99af87c3aa908e045b592f7ad5b4b0dc3b4c89c6
