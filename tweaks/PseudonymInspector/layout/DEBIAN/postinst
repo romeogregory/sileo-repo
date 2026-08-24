@@ -1,0 +1,10 @@
+#!/bin/sh
+# Without this SpringBoard never shows the icon: it caches the installed-app
+# list and does not rescan /var/jb/Applications on its own.
+set -e
+if [ -x /var/jb/usr/bin/uicache ]; then
+  /var/jb/usr/bin/uicache --all
+else
+  uicache --all || true
+fi
+exit 0
