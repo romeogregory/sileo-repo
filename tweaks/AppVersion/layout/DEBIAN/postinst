@@ -1,0 +1,8 @@
+#!/bin/sh
+# The App Store is sandboxed and cannot create this itself. Mode 1777 so a
+# sandboxed process can append while still not being able to delete another
+# user's files.
+set -e
+mkdir -p /var/jb/tmp
+chmod 1777 /var/jb/tmp
+exit 0
