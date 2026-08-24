@@ -15,7 +15,8 @@ static NSString *const kPrefsPath =
 // Kill switch. Version 0.1.0 stalled the App Store, and recovering meant
 // uninstalling the package from Sileo. Touching this file disables every hook
 // on next launch, which is a far cheaper way out of the same situation.
-static NSString *const kDisableFlag = @"/var/jb/tmp/appversion.off";
+static NSString *const kDisableFlag =
+    @"/var/jb/var/mobile/Library/Logs/AppVersion/appversion.off";
 
 static BOOL AVEnabled(void) {
     static BOOL enabled;
@@ -37,6 +38,42 @@ static NSString *AVTargetVersionId(void) {
 static NSString *AVTruncate(NSString *text, NSUInteger limit) {
     if (text.length <= limit) return text;
     return [[text substringToIndex:limit] stringByAppendingString:@" ...[cut]"];
+}
+
+// Buy parameters carry Apple account identifiers - guid, DSID, session tokens.
+// The discovery value here is the SHAPE of the request, not the values, so key
+// names and lengths are kept and everything outside a tight allowlist is
+// dropped. Writing account identifiers to disk to learn a field name would be a
+// bad trade.
+static NSString *AVRedact(NSString *parameters) {
+    if (!parameters.length) return @"(empty)";
+
+    static NSSet *safe;
+    static dispatch_once_t token;
+    dispatch_once(&token, ^{
+        // Non-secret and directly useful: the version we target, the public App
+        // Store id of the app, and the product type.
+        safe = [NSSet setWithArray:@[@"appExtVrsId", @"salableAdamId",
+                                     @"productType"]];
+    });
+
+    NSMutableArray *out = [NSMutableArray array];
+    for (NSString *field in [parameters componentsSeparatedByString:@"&"]) {
+        NSRange split = [field rangeOfString:@"="];
+        if (split.location == NSNotFound) {
+            [out addObject:field];
+            continue;
+        }
+        NSString *key = [field substringToIndex:split.location];
+        NSString *value = [field substringFromIndex:split.location + 1];
+        if ([safe containsObject:key]) {
+            [out addObject:field];
+        } else {
+            [out addObject:[NSString stringWithFormat:@"%@=<redacted:%lu>",
+                            key, (unsigned long)value.length]];
+        }
+    }
+    return [out componentsJoinedByString:@"&"];
 }
 
 #pragma mark - Discovery
@@ -108,7 +145,7 @@ static void AVReportEnvironment(void) {
         %orig;
         return;
     }
-    AVLog(@"setBuyParameters IN  : %@", AVTruncate(parameters, 900));
+    AVLog(@"setBuyParameters IN  : %@", AVTruncate(AVRedact(parameters), 900));
 
     NSString *target = AVTargetVersionId();
     if (!target || !parameters.length) {
@@ -142,7 +179,7 @@ static void AVReportEnvironment(void) {
         return;
     }
 
-    AVLog(@"setBuyParameters OUT : %@", AVTruncate(rewritten, 900));
+    AVLog(@"setBuyParameters OUT : %@", AVTruncate(AVRedact(rewritten), 900));
     %orig(rewritten);
 }
 
@@ -178,11 +215,24 @@ static void AVReportEnvironment(void) {
     }
 
     @try {
+        // The body around this key is request state, not something worth
+        // writing to disk. Only the field we came for is recorded.
         NSString *text = [[NSString alloc] initWithData:body
                                                encoding:NSUTF8StringEncoding];
-        AVLog(@"setHTTPBody %@ (%lu bytes) : %@", self.URL.host,
-              (unsigned long)body.length,
-              text ? AVTruncate(text, 900) : @"(binary, key present)");
+        NSString *value = @"(binary)";
+        if (text) {
+            NSRegularExpression *regex = [NSRegularExpression
+                regularExpressionWithPattern:@"appExtVrsId[=\":< ]+([0-9]+)"
+                                     options:0
+                                       error:NULL];
+            NSTextCheckingResult *match =
+                [regex firstMatchInString:text options:0
+                                    range:NSMakeRange(0, text.length)];
+            value = match ? [text substringWithRange:[match rangeAtIndex:1]]
+                          : @"(present, unparsed)";
+        }
+        AVLog(@"setHTTPBody %@ (%lu bytes) appExtVrsId=%@", self.URL.host,
+              (unsigned long)body.length, value);
     } @catch (NSException *exception) {
         AVLog(@"body log threw %@", exception.name);
     }

@@ -1,20 +1,33 @@
 #import "AVLog.h"
 
-static NSString *AVResolvePath(void) {
-    NSFileManager *fm = [NSFileManager defaultManager];
+#import <fcntl.h>
+#import <unistd.h>
 
-    // Preferred: readable over issh without hunting for a container UUID.
-    NSString *shared = @"/var/jb/tmp/appversion.log";
-    if ([fm createFileAtPath:shared contents:nil attributes:nil] ||
-        [fm isWritableFileAtPath:shared]) {
-        return shared;
+// A private directory, created 0700 and owned by mobile in postinst.
+//
+// NOT /var/jb/tmp. That is world-writable, which made the log readable by any
+// process on the device and let anything pre-create the file as a symlink for
+// our appends to follow.
+static NSString *const kLogDirectory =
+    @"/var/jb/var/mobile/Library/Logs/AppVersion";
+
+static NSString *AVResolvePath(void) {
+    NSString *preferred =
+        [kLogDirectory stringByAppendingPathComponent:@"appversion.log"];
+
+    NSFileManager *fm = [NSFileManager defaultManager];
+    BOOL isDirectory = NO;
+    if ([fm fileExistsAtPath:kLogDirectory isDirectory:&isDirectory] &&
+        isDirectory && [fm isWritableFileAtPath:kLogDirectory]) {
+        return preferred;
     }
 
-    // Fallback inside the app's own container. Still findable, because the
+    // The app's own container: private to this app by construction, so it is
+    // the safer fallback even though it takes a find to locate over SSH. The
     // header line records wherever we ended up.
     NSString *fallback = [NSTemporaryDirectory()
                           stringByAppendingPathComponent:@"appversion.log"];
-    NSLog(@"[AppVersion] /var/jb/tmp not writable, logging to %@", fallback);
+    NSLog(@"[AppVersion] %@ unavailable, logging to %@", kLogDirectory, fallback);
     return fallback;
 }
 
@@ -34,41 +47,31 @@ void AVLog(NSString *format, ...) {
     va_end(args);
 
     static NSDateFormatter *stamp;
+    static dispatch_queue_t queue;
     static dispatch_once_t token;
     dispatch_once(&token, ^{
         stamp = [[NSDateFormatter alloc] init];
         stamp.dateFormat = @"HH:mm:ss.SSS";
+        queue = dispatch_queue_create("com.romeo.appversion.log",
+                                      DISPATCH_QUEUE_SERIAL);
     });
 
     NSString *line = [NSString stringWithFormat:@"%@  %@\n",
                       [stamp stringFromDate:[NSDate date]], body];
     NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
 
-    // Append via a file handle rather than rewriting the whole file: the App
-    // Store makes many of these calls and a read-modify-write would both lose
-    // lines and grow quadratically.
-    static dispatch_queue_t queue;
-    static dispatch_once_t queueToken;
-    dispatch_once(&queueToken, ^{
-        queue = dispatch_queue_create("com.romeo.appversion.log",
-                                      DISPATCH_QUEUE_SERIAL);
-    });
-
     dispatch_async(queue, ^{
-        NSFileHandle *handle =
-            [NSFileHandle fileHandleForWritingAtPath:AVLogPath()];
-        if (!handle) {
-            [[NSFileManager defaultManager] createFileAtPath:AVLogPath()
-                                                    contents:data
-                                                  attributes:nil];
+        // O_NOFOLLOW refuses to open the final path component if it is a
+        // symlink, and 0600 keeps the file readable only by its owner. Together
+        // these are why this uses open() rather than NSFileHandle, which
+        // follows links and inherits the directory's permissions.
+        int fd = open([AVLogPath() fileSystemRepresentation],
+                      O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW, 0600);
+        if (fd < 0) {
+            NSLog(@"[AppVersion] log open failed (errno %d)", errno);
             return;
         }
-        @try {
-            [handle seekToEndOfFile];
-            [handle writeData:data];
-        } @catch (NSException *exception) {
-            NSLog(@"[AppVersion] log write failed: %@", exception.name);
-        }
-        [handle closeFile];
+        write(fd, data.bytes, data.length);
+        close(fd);
     });
 }

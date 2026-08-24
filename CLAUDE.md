@@ -137,6 +137,10 @@ hash — see below.
   all* — the user taps Install and no queue appears, which is indistinguishable
   from a dependency failure. Confirmed on-device; it cost a debugging round.
   Leave old versions in `repo/debs/`, they are a few KB each.
+  The one exception is a build that is actively harmful — AppVersion 0.1.0
+  stalled the App Store and 0.2.0 wrote Apple account identifiers to a
+  world-readable file. Those are withdrawn: a stale-cache 404 is a nuisance,
+  installing a known-bad build is not.
 - **Sileo's index cache outlives a pull-to-refresh.** Force-quitting and
   reopening Sileo is what actually clears it. Try that before diagnosing
   anything else.

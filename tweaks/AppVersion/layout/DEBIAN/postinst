@@ -1,8 +1,16 @@
 #!/bin/sh
-# The App Store is sandboxed and cannot create this itself. Mode 1777 so a
-# sandboxed process can append while still not being able to delete another
-# user's files.
+# A private directory owned by mobile, mode 0700.
+#
+# NOT chmod 1777 on /var/jb/tmp, which 0.2.0 did: that widened permissions on a
+# shared directory this package does not own, left the log world-readable, and
+# allowed any process to pre-create the log as a symlink for our writes to
+# follow.
 set -e
-mkdir -p /var/jb/tmp
-chmod 1777 /var/jb/tmp
+
+LOGDIR=/var/jb/var/mobile/Library/Logs/AppVersion
+
+mkdir -p "$LOGDIR"
+chown mobile:mobile "$LOGDIR"
+chmod 700 "$LOGDIR"
+
 exit 0
