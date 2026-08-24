@@ -72,8 +72,7 @@ static NSArray *PSAllApplications(id workspace) {
     }
     result->_reportedCount = all.count;
 
-    NSMutableArray *strict = [NSMutableArray array];
-    NSMutableArray *loose = [NSMutableArray array];
+    NSMutableArray *chosen = [NSMutableArray array];
 
     for (LSApplicationProxy *app in all) {
         NSString *bundleID = app.applicationIdentifier;
@@ -82,16 +81,14 @@ static NSArray *PSAllApplications(id workspace) {
         // silently does nothing would just be a lie in the UI.
         if ([bundleID hasPrefix:@"com.apple."]) continue;
 
-        [loose addObject:app];
-        if ([app.applicationType isEqualToString:@"User"]) {
-            [strict addObject:app];
-        }
+        // No filtering on applicationType. Anything installed under
+        // /var/jb/Applications - every jailbreak app, including this tweak's own
+        // Inspector - is reported as "System" rather than "User", so preferring
+        // User apps silently excluded exactly the app built to verify the spoof.
+        // Excluding com.apple.* is the only distinction that reflects what the
+        // tweak actually enforces.
+        [chosen addObject:app];
     }
-
-    // applicationType is private and its values have moved between releases. If
-    // filtering on it discards everything, the filter is what is wrong, not the
-    // device, so fall back to the looser set.
-    NSMutableArray *chosen = strict.count ? strict : loose;
     [chosen sortUsingComparator:^NSComparisonResult(LSApplicationProxy *a,
                                                     LSApplicationProxy *b) {
         return [(a.localizedName ?: a.applicationIdentifier)
