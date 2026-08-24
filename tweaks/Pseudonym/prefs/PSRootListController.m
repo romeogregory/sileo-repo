@@ -31,6 +31,44 @@ static PSSpecifier *PSInfoRow(id target, NSString *label, NSString *value) {
     return spec;
 }
 
+static PSSpecifier *PSTextRow(id target, NSString *label, NSString *key,
+                              NSString *placeholder) {
+    PSSpecifier *spec = [PSSpecifier preferenceSpecifierNamed:label
+                                                       target:target
+                                                          set:@selector(setText:specifier:)
+                                                          get:@selector(text:)
+                                                       detail:nil
+                                                         cell:PSEditTextCell
+                                                         edit:nil];
+    [spec setProperty:key forKey:@"psKey"];
+    [spec setProperty:placeholder forKey:@"placeholder"];
+    // NumbersAndPunctuation, not DecimalPad: coordinates need a minus sign and
+    // the decimal pad has none, which makes the southern and western
+    // hemispheres untypeable.
+    [spec setProperty:@(UIKeyboardTypeNumbersAndPunctuation) forKey:@"keyboardType"];
+    [spec setProperty:@NO forKey:@"autoCaps"];
+    [spec setProperty:@NO forKey:@"autoCorrection"];
+    return spec;
+}
+
+- (id)flag:(PSSpecifier *)specifier {
+    return @([PSPrefsStore boolForKey:[specifier propertyForKey:@"psKey"]]);
+}
+
+- (void)setFlag:(id)value specifier:(PSSpecifier *)specifier {
+    [PSPrefsStore setBool:[value boolValue]
+                   forKey:[specifier propertyForKey:@"psKey"]];
+}
+
+- (id)text:(PSSpecifier *)specifier {
+    return [PSPrefsStore stringForKey:[specifier propertyForKey:@"psKey"]] ?: @"";
+}
+
+- (void)setText:(id)value specifier:(PSSpecifier *)specifier {
+    [PSPrefsStore setString:value
+                     forKey:[specifier propertyForKey:@"psKey"]];
+}
+
 - (id)infoValue:(PSSpecifier *)specifier {
     return [specifier propertyForKey:@"psInfoValue"];
 }
@@ -75,6 +113,26 @@ static PSSpecifier *PSInfoRow(id target, NSString *label, NSString *value) {
     if (scan.failureReason && scan.workspaceResolved) {
         [specs addObject:PSInfoRow(self, @"Note", scan.failureReason)];
     }
+
+    [specs addObject:PSGroup(@"Location",
+        @"Reports a fixed position to enabled apps instead of the real one. "
+        @"Applies only to apps switched on below, and only while this is on, so "
+        @"spoofing an identity does not silently relocate the app as well.")];
+
+    PSSpecifier *locationToggle =
+        [PSSpecifier preferenceSpecifierNamed:@"Spoof Location"
+                                       target:self
+                                          set:@selector(setFlag:specifier:)
+                                          get:@selector(flag:)
+                                       detail:nil
+                                         cell:PSSwitchCell
+                                         edit:nil];
+    [locationToggle setProperty:@"LocationEnabled" forKey:@"psKey"];
+    [specs addObject:locationToggle];
+
+    [specs addObject:PSTextRow(self, @"Latitude", @"Latitude", @"52.3676")];
+    [specs addObject:PSTextRow(self, @"Longitude", @"Longitude", @"4.9041")];
+    [specs addObject:PSTextRow(self, @"Altitude (m)", @"Altitude", @"0")];
 
     [specs addObject:PSGroup(@"Apps",
         @"Enabling an app takes effect the next time it launches, so force-quit "

@@ -64,3 +64,23 @@ NSData *PSConfigSeed(void) {
 NSInteger PSConfigGeneration(void) {
     return [PSAppEntry()[@"Generation"] integerValue];
 }
+
+BOOL PSConfigLocationEnabled(void) {
+    return [PSPrefs()[@"LocationEnabled"] boolValue];
+}
+
+// Stored as strings so the Settings text fields round-trip exactly what was
+// typed. doubleValue yields 0 for anything unparseable, which is a real
+// coordinate (off West Africa), so an explicitly missing key is treated as
+// disabled by the caller rather than silently meaning null island.
+double PSConfigLatitude(void) {
+    return [PSPrefs()[@"Latitude"] doubleValue];
+}
+
+double PSConfigLongitude(void) {
+    return [PSPrefs()[@"Longitude"] doubleValue];
+}
+
+double PSConfigAltitude(void) {
+    return [PSPrefs()[@"Altitude"] doubleValue];
+}

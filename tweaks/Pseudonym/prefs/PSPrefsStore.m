@@ -88,4 +88,29 @@ static NSString *const kPrefsPath =
     return changed;
 }
 
++ (BOOL)boolForKey:(NSString *)key {
+    return [[self load][key] boolValue];
+}
+
++ (void)setBool:(BOOL)value forKey:(NSString *)key {
+    NSMutableDictionary *prefs = [self load];
+    prefs[key] = @(value);
+    [self save:prefs];
+}
+
++ (NSString *)stringForKey:(NSString *)key {
+    id value = [self load][key];
+    return [value isKindOfClass:[NSString class]] ? value : nil;
+}
+
++ (void)setString:(NSString *)value forKey:(NSString *)key {
+    NSMutableDictionary *prefs = [self load];
+    if (value.length) {
+        prefs[key] = value;
+    } else {
+        [prefs removeObjectForKey:key];
+    }
+    [self save:prefs];
+}
+
 @end

@@ -18,6 +18,13 @@
 + (BOOL)enabledForApp:(NSString *)bundleID;
 + (void)setEnabled:(BOOL)enabled forApp:(NSString *)bundleID;
 
+// Generic top-level accessors, used by the location settings. Every write is
+// still read-modify-write on the whole dictionary so the Seed survives.
++ (BOOL)boolForKey:(NSString *)key;
++ (void)setBool:(BOOL)value forKey:(NSString *)key;
++ (NSString *)stringForKey:(NSString *)key;
++ (void)setString:(NSString *)value forKey:(NSString *)key;
+
 + (NSInteger)generationForApp:(NSString *)bundleID;
 + (void)bumpGenerationForApp:(NSString *)bundleID;
 + (NSInteger)bumpAllEnabledGenerations;

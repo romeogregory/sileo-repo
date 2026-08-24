@@ -1,10 +1,14 @@
 #import "PIViewController.h"
 #import <AdSupport/AdSupport.h>
+#import <CoreLocation/CoreLocation.h>
 #import <sys/sysctl.h>
 #import <sys/utsname.h>
 
-@interface PIViewController ()
+@interface PIViewController () <CLLocationManagerDelegate>
 @property (nonatomic, strong) NSArray *sections;
+@property (nonatomic, strong) CLLocationManager *manager;
+@property (nonatomic, strong) CLLocation *lastFix;
+@property (nonatomic, copy) NSString *locationError;
 @end
 
 @implementation PIViewController
@@ -20,6 +24,12 @@
         [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction
                                                       target:self
                                                       action:@selector(copyAll)];
+
+    self.manager = [[CLLocationManager alloc] init];
+    self.manager.delegate = self;
+    [self.manager requestWhenInUseAuthorization];
+    [self.manager startUpdatingLocation];
+
     [self reload];
 }
 
@@ -48,17 +58,56 @@ static NSString *PIUnameMachine(void) {
 }
 
 static NSString *PIAdvertisingID(void) {
-    ASIdentifierManager *manager = [ASIdentifierManager sharedManager];
-    NSUUID *identifier = manager.advertisingIdentifier;
+    NSUUID *identifier = [ASIdentifierManager sharedManager].advertisingIdentifier;
     NSString *value = identifier.UUIDString ?: @"nil";
 
     // All zeros is what iOS returns when App Tracking Transparency was denied.
-    // Calling that out matters: it is the privacy-preserving answer, and a
+    // Naming that matters: it is the privacy-preserving answer, and a
     // plausible-looking UUID here would be strictly worse.
     if ([value isEqualToString:@"00000000-0000-0000-0000-000000000000"]) {
         return @"zeroed (ATT denied)";
     }
     return value;
+}
+
+static NSString *PIAuthorizationName(CLAuthorizationStatus status) {
+    switch (status) {
+        case kCLAuthorizationStatusNotDetermined:       return @"not determined";
+        case kCLAuthorizationStatusRestricted:          return @"restricted";
+        case kCLAuthorizationStatusDenied:              return @"denied";
+        case kCLAuthorizationStatusAuthorizedAlways:    return @"always";
+        case kCLAuthorizationStatusAuthorizedWhenInUse: return @"when in use";
+    }
+    return @"unknown";
+}
+
+- (NSArray *)locationRows {
+    CLAuthorizationStatus status = self.manager.authorizationStatus;
+    NSMutableArray *rows = [NSMutableArray array];
+    [rows addObject:@[@"Authorization", PIAuthorizationName(status)]];
+
+    if (self.locationError) {
+        [rows addObject:@[@"Error", self.locationError]];
+    }
+    if (!self.lastFix) {
+        [rows addObject:@[@"Coordinate", @"no fix yet"]];
+        return rows;
+    }
+
+    CLLocationCoordinate2D c = self.lastFix.coordinate;
+    [rows addObject:@[@"Latitude", [NSString stringWithFormat:@"%.6f", c.latitude]]];
+    [rows addObject:@[@"Longitude", [NSString stringWithFormat:@"%.6f", c.longitude]]];
+    [rows addObject:@[@"Altitude",
+                      [NSString stringWithFormat:@"%.1f m", self.lastFix.altitude]]];
+    [rows addObject:@[@"Accuracy",
+                      [NSString stringWithFormat:@"%.1f m",
+                       self.lastFix.horizontalAccuracy]]];
+    // Age exposes a stale fix. A spoofed location with an old timestamp is the
+    // main reason apps ignore one, so it is worth seeing directly.
+    [rows addObject:@[@"Fix age",
+                      [NSString stringWithFormat:@"%.1f s",
+                       -[self.lastFix.timestamp timeIntervalSinceNow]]]];
+    return rows;
 }
 
 - (void)reload {
@@ -87,6 +136,8 @@ static NSString *PIAdvertisingID(void) {
               @[@"System", [NSString stringWithFormat:@"%@ %@",
                             device.systemName, device.systemVersion]],
           ]},
+        @{@"title": @"Location",
+          @"rows": [self locationRows]},
     ];
     [self.tableView reloadData];
 }
@@ -110,6 +161,25 @@ static NSString *PIAdvertisingID(void) {
                                              style:UIAlertActionStyleDefault
                                            handler:nil]];
     [self presentViewController:done animated:YES completion:nil];
+}
+
+#pragma mark - CLLocationManagerDelegate
+
+- (void)locationManager:(CLLocationManager *)manager
+     didUpdateLocations:(NSArray<CLLocation *> *)locations {
+    self.lastFix = locations.lastObject;
+    self.locationError = nil;
+    [self reload];
+}
+
+- (void)locationManager:(CLLocationManager *)manager
+       didFailWithError:(NSError *)error {
+    self.locationError = error.localizedDescription;
+    [self reload];
+}
+
+- (void)locationManagerDidChangeAuthorization:(CLLocationManager *)manager {
+    [self reload];
 }
 
 #pragma mark - Table
