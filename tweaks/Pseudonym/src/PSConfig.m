@@ -84,3 +84,31 @@ double PSConfigLongitude(void) {
 double PSConfigAltitude(void) {
     return [PSPrefs()[@"Altitude"] doubleValue];
 }
+
+static NSString *PSString(NSString *key) {
+    id value = PSPrefs()[key];
+    return [value isKindOfClass:[NSString class]] ? value : nil;
+}
+
+BOOL PSConfigProxyEnabled(void) {
+    return [PSPrefs()[@"ProxyEnabled"] boolValue];
+}
+
+NSString *PSConfigProxyHost(void) {
+    return PSString(@"ProxyHost");
+}
+
+NSInteger PSConfigProxyPort(void) {
+    return [PSString(@"ProxyPort") integerValue];
+}
+
+NSString *PSConfigProxyUser(void) {
+    return PSString(@"ProxyUser");
+}
+
+// Stored in the same plist as everything else: mode 600 and owned by mobile, but
+// plaintext. Anything running as mobile on a jailbroken device can read it, so
+// this is not the place for credentials that matter elsewhere.
+NSString *PSConfigProxyPassword(void) {
+    return PSString(@"ProxyPassword");
+}

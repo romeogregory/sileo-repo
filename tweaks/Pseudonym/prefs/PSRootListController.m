@@ -1,6 +1,7 @@
 #import <Preferences/PSListController.h>
 #import <Preferences/PSSpecifier.h>
 #import <UIKit/UIKit.h>
+#import <CoreLocation/CoreLocation.h>
 #import "PSPrefsStore.h"
 #import "PSApps.h"
 
@@ -32,7 +33,8 @@ static PSSpecifier *PSInfoRow(id target, NSString *label, NSString *value) {
 }
 
 static PSSpecifier *PSTextRow(id target, NSString *label, NSString *key,
-                              NSString *placeholder) {
+                              NSString *placeholder, UIKeyboardType keyboard,
+                              BOOL secure) {
     PSSpecifier *spec = [PSSpecifier preferenceSpecifierNamed:label
                                                        target:target
                                                           set:@selector(setText:specifier:)
@@ -42,13 +44,23 @@ static PSSpecifier *PSTextRow(id target, NSString *label, NSString *key,
                                                          edit:nil];
     [spec setProperty:key forKey:@"psKey"];
     [spec setProperty:placeholder forKey:@"placeholder"];
-    // NumbersAndPunctuation, not DecimalPad: coordinates need a minus sign and
-    // the decimal pad has none, which makes the southern and western
-    // hemispheres untypeable.
-    [spec setProperty:@(UIKeyboardTypeNumbersAndPunctuation) forKey:@"keyboardType"];
+    [spec setProperty:@(keyboard) forKey:@"keyboardType"];
     [spec setProperty:@NO forKey:@"autoCaps"];
     [spec setProperty:@NO forKey:@"autoCorrection"];
+    if (secure) {
+        [spec setProperty:@YES forKey:@"isSecure"];
+        [spec setProperty:@YES forKey:@"secure"];
+    }
     return spec;
+}
+
+// NumbersAndPunctuation, not DecimalPad: coordinates need a minus sign and the
+// decimal pad has none, which would make the southern and western hemispheres
+// untypeable.
+static PSSpecifier *PSCoordRow(id target, NSString *label, NSString *key,
+                               NSString *placeholder) {
+    return PSTextRow(target, label, key, placeholder,
+                     UIKeyboardTypeNumbersAndPunctuation, NO);
 }
 
 - (id)flag:(PSSpecifier *)specifier {
@@ -130,9 +142,23 @@ static PSSpecifier *PSTextRow(id target, NSString *label, NSString *key,
     [locationToggle setProperty:@"LocationEnabled" forKey:@"psKey"];
     [specs addObject:locationToggle];
 
-    [specs addObject:PSTextRow(self, @"Latitude", @"Latitude", @"52.3676")];
-    [specs addObject:PSTextRow(self, @"Longitude", @"Longitude", @"4.9041")];
-    [specs addObject:PSTextRow(self, @"Altitude (m)", @"Altitude", @"0")];
+    [specs addObject:PSTextRow(self, @"Address", @"Address",
+                               @"Dam 1, Amsterdam", UIKeyboardTypeDefault, NO)];
+
+    PSSpecifier *lookup =
+        [PSSpecifier preferenceSpecifierNamed:@"Look Up Address"
+                                       target:self
+                                          set:NULL
+                                          get:NULL
+                                       detail:nil
+                                         cell:PSButtonCell
+                                         edit:nil];
+    lookup->action = @selector(lookUpAddress);
+    [specs addObject:lookup];
+
+    [specs addObject:PSCoordRow(self, @"Latitude", @"Latitude", @"52.3676")];
+    [specs addObject:PSCoordRow(self, @"Longitude", @"Longitude", @"4.9041")];
+    [specs addObject:PSCoordRow(self, @"Altitude (m)", @"Altitude", @"0")];
 
     [specs addObject:PSGroup(@"Apps",
         @"Enabling an app takes effect the next time it launches, so force-quit "
@@ -155,6 +181,34 @@ static PSSpecifier *PSTextRow(id target, NSString *label, NSString *key,
         [spec setProperty:bundleID forKey:@"bundleID"];
         [specs addObject:spec];
     }
+
+    [specs addObject:PSGroup(@"Proxy",
+        @"Routes enabled apps through an HTTP/HTTPS proxy. Pair it with a "
+        @"location in the same country: a GPS fix in one place and an egress IP "
+        @"in another is a louder signal than either spoof suppresses. Covers "
+        @"apps using NSURLSession, which is most of them, but not ones that open "
+        @"raw sockets or ship their own TLS stack. The password is stored in "
+        @"plaintext in the preferences file.")];
+
+    PSSpecifier *proxyToggle =
+        [PSSpecifier preferenceSpecifierNamed:@"Use Proxy"
+                                       target:self
+                                          set:@selector(setFlag:specifier:)
+                                          get:@selector(flag:)
+                                       detail:nil
+                                         cell:PSSwitchCell
+                                         edit:nil];
+    [proxyToggle setProperty:@"ProxyEnabled" forKey:@"psKey"];
+    [specs addObject:proxyToggle];
+
+    [specs addObject:PSTextRow(self, @"Host", @"ProxyHost", @"proxy.example.com",
+                               UIKeyboardTypeURL, NO)];
+    [specs addObject:PSTextRow(self, @"Port", @"ProxyPort", @"8080",
+                               UIKeyboardTypeNumberPad, NO)];
+    [specs addObject:PSTextRow(self, @"Username", @"ProxyUser", @"optional",
+                               UIKeyboardTypeDefault, NO)];
+    [specs addObject:PSTextRow(self, @"Password", @"ProxyPassword", @"optional",
+                               UIKeyboardTypeDefault, YES)];
 
     [specs addObject:PSGroup(nil,
         @"Gives every enabled app a brand-new device. This is the deliberate "
@@ -193,6 +247,67 @@ static PSSpecifier *PSTextRow(id target, NSString *label, NSString *key,
 - (void)setAppEnabled:(id)value specifier:(PSSpecifier *)specifier {
     [PSPrefsStore setEnabled:[value boolValue]
                       forApp:[specifier propertyForKey:@"bundleID"]];
+}
+
+- (void)lookUpAddress {
+    NSString *address = [PSPrefsStore stringForKey:@"Address"];
+    if (!address.length) {
+        [self alert:@"No Address" message:@"Type an address in the field first."];
+        return;
+    }
+
+    // Geocoding sends the address to Apple, the same as any Maps search. It is
+    // also unaffected by this tweak: com.apple.* is refused, so Preferences is
+    // never spoofed and the lookup runs against the real network.
+    CLGeocoder *geocoder = [[CLGeocoder alloc] init];
+    [geocoder geocodeAddressString:address
+                completionHandler:^(NSArray<CLPlacemark *> *placemarks,
+                                    NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            CLPlacemark *place = placemarks.firstObject;
+            if (error || !place.location) {
+                [self alert:@"Not Found"
+                    message:error.localizedDescription
+                            ?: @"No coordinates for that address."];
+                return;
+            }
+
+            CLLocationCoordinate2D c = place.location.coordinate;
+            [PSPrefsStore setString:[NSString stringWithFormat:@"%.6f", c.latitude]
+                             forKey:@"Latitude"];
+            [PSPrefsStore setString:[NSString stringWithFormat:@"%.6f", c.longitude]
+                             forKey:@"Longitude"];
+
+            // Rebuild rather than reload: specifiers are cached, so the new
+            // coordinates would not otherwise appear in their fields.
+            self->_specifiers = nil;
+            [self reloadSpecifiers];
+
+            NSString *resolved = place.name.length ? place.name : address;
+            if (place.locality.length) {
+                resolved = [NSString stringWithFormat:@"%@, %@", resolved,
+                            place.locality];
+            }
+            if (place.country.length) {
+                resolved = [NSString stringWithFormat:@"%@, %@", resolved,
+                            place.country];
+            }
+            [self alert:@"Location Set"
+                message:[NSString stringWithFormat:@"%@ (%.6f, %.6f)",
+                         resolved, c.latitude, c.longitude]];
+        });
+    }];
+}
+
+- (void)alert:(NSString *)title message:(NSString *)message {
+    UIAlertController *sheet =
+        [UIAlertController alertControllerWithTitle:title
+                                            message:message
+                                     preferredStyle:UIAlertControllerStyleAlert];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"OK"
+                                              style:UIAlertActionStyleDefault
+                                            handler:nil]];
+    [self presentViewController:sheet animated:YES completion:nil];
 }
 
 - (void)regenerateAll {

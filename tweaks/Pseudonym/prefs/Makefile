@@ -6,7 +6,7 @@ BUNDLE_NAME = PseudonymPrefs
 PseudonymPrefs_FILES = PSRootListController.m PSApps.m PSPrefsStore.m
 PseudonymPrefs_INSTALL_PATH = /Library/PreferenceBundles
 PseudonymPrefs_CFLAGS = -fobjc-arc
-PseudonymPrefs_FRAMEWORKS = UIKit
+PseudonymPrefs_FRAMEWORKS = UIKit CoreLocation
 PseudonymPrefs_PRIVATE_FRAMEWORKS = Preferences
 
 include $(THEOS_MAKE_PATH)/bundle.mk

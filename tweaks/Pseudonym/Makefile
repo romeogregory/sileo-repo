@@ -8,9 +8,9 @@ include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = Pseudonym
 Pseudonym_FILES = src/Tweak.x src/PSConfig.m src/PSIdentity.m src/PSProfile.m \
-                  src/PSHooksDevice.x src/PSHooksSysctl.x src/PSHooksKeychain.x src/PSHooksLocation.x
+                  src/PSHooksDevice.x src/PSHooksSysctl.x src/PSHooksKeychain.x src/PSHooksLocation.x src/PSHooksNetwork.x
 Pseudonym_CFLAGS = -fobjc-arc -Isrc
-Pseudonym_FRAMEWORKS = UIKit Foundation Security CoreLocation
+Pseudonym_FRAMEWORKS = UIKit Foundation Security CoreLocation CFNetwork
 Pseudonym_PRIVATE_FRAMEWORKS = AdSupport
 
 include $(THEOS_MAKE_PATH)/tweak.mk

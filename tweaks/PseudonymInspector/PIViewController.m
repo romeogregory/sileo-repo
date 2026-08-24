@@ -9,6 +9,7 @@
 @property (nonatomic, strong) CLLocationManager *manager;
 @property (nonatomic, strong) CLLocation *lastFix;
 @property (nonatomic, copy) NSString *locationError;
+@property (nonatomic, copy) NSString *publicIP;
 @end
 
 @implementation PIViewController
@@ -138,6 +139,10 @@ static NSString *PIAuthorizationName(CLAuthorizationStatus status) {
           ]},
         @{@"title": @"Location",
           @"rows": [self locationRows]},
+        @{@"title": @"Network",
+          @"rows": @[
+              @[@"Public IP", self.publicIP ?: @"tap to check"],
+          ]},
     ];
     [self.tableView reloadData];
 }
@@ -182,6 +187,48 @@ static NSString *PIAuthorizationName(CLAuthorizationStatus status) {
     [self reload];
 }
 
+#pragma mark - Egress IP
+
+- (void)fetchPublicIP {
+    self.publicIP = @"checking...";
+    [self.tableView reloadData];
+
+    // Deliberately a plain NSURLSession call. If a proxy is configured for this
+    // bundle, the tweak rewrites this session's configuration, so the address
+    // that comes back is the proxy's egress - which is the whole point of
+    // checking it from inside a real app rather than from the settings pane.
+    NSURL *url = [NSURL URLWithString:@"https://api.ipify.org"];
+    NSURLSessionDataTask *task = [[NSURLSession sharedSession]
+        dataTaskWithURL:url
+      completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSString *result;
+        if (error) {
+            result = [NSString stringWithFormat:@"failed: %@",
+                      error.localizedDescription];
+        } else {
+            NSString *body = [[NSString alloc] initWithData:data
+                                                   encoding:NSUTF8StringEncoding];
+            body = [body stringByTrimmingCharactersInSet:
+                    [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            result = body.length ? body : @"empty response";
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.publicIP = result;
+            [self.tableView reloadData];
+        });
+    }];
+    [task resume];
+}
+
+- (void)tableView:(UITableView *)tableView
+    didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    NSArray *row = self.sections[indexPath.section][@"rows"][indexPath.row];
+    if ([row[0] isEqualToString:@"Public IP"]) {
+        [self fetchPublicIP];
+    }
+}
+
 #pragma mark - Table
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
@@ -224,6 +271,11 @@ titleForFooterInSection:(NSInteger)section {
     NSArray *row = self.sections[indexPath.section][@"rows"][indexPath.row];
     cell.textLabel.text = row[0];
     cell.detailTextLabel.text = row[1];
+    BOOL tappable = [row[0] isEqualToString:@"Public IP"];
+    cell.selectionStyle = tappable ? UITableViewCellSelectionStyleDefault
+                                   : UITableViewCellSelectionStyleNone;
+    cell.accessoryType = tappable ? UITableViewCellAccessoryDetailButton
+                                  : UITableViewCellAccessoryNone;
     return cell;
 }
 
