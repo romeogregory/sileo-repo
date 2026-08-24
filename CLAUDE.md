@@ -20,8 +20,12 @@ Consequences that are easy to get wrong:
 - `Architecture` must be `iphoneos-arm64` (rootless). `iphoneos-arm` is rootful
   and `iphoneos-arm64e` is roothide — both install and then silently do nothing.
 - Payloads install under **`/var/jb`**, not `/`.
-- Compiled tweaks depend on **`ellekit`**, not `mobilesubstrate`. ElleKit is the
-  substrate palera1n rootless ships instead of Cydia Substrate.
+- Compiled tweaks here declare `Depends: ellekit`, and that **resolves on this
+  device** — confirmed by a successful on-device install. But neither `ellekit`
+  nor `mobilesubstrate` exists in Procursus: both are satisfied from the local
+  dpkg database, the way `firmware` is. Procursus's own `preferenceloader`
+  declares `Depends: mobilesubstrate`, so that is likely the more portable
+  spelling if these packages ever target a different rootless setup.
 - `Depends: firmware (>= 15.0)` is the floor used here.
 
 ## Getting the device jailbroken (hard-won; do not re-derive)
@@ -128,6 +132,14 @@ hash — see below.
 - **Bump `Version` on every rebuild.** Sileo caches by name+version; reusing a
   version means the change is never fetched. Comparison uses dpkg ordering, so
   `1.0.10` > `1.0.9`.
+- **Never delete a published `.deb`.** Clients hold a cached index; if it lists
+  a version whose file is gone the download 404s and Sileo reports *nothing at
+  all* — the user taps Install and no queue appears, which is indistinguishable
+  from a dependency failure. Confirmed on-device; it cost a debugging round.
+  Leave old versions in `repo/debs/`, they are a few KB each.
+- **Sileo's index cache outlives a pull-to-refresh.** Force-quitting and
+  reopening Sileo is what actually clears it. Try that before diagnosing
+  anything else.
 - **`.gitattributes` LF enforcement is load-bearing**, not cosmetic. A CRLF
   `Makefile` breaks `make` inside the Theos container, and CRLF in `Packages`
   can trip APT-style parsers. Binaries (`.deb`, `.png`, `.gz`, `.bz2`, `.xz`)
