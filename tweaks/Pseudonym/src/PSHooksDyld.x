@@ -94,11 +94,12 @@ static intptr_t h_dyld_slide(uint32_t index) {
     // set that must stay untouched.
     // Guard the config reads: with the cloak's open/stat hooks installed, these
     // reads open a file and would otherwise re-enter those hooks and deadlock.
+    // Install only when the switch is on, so turning it off truly removes the
+    // hooks on next launch rather than leaving detectable trampolines behind.
     PSHookEnter();
-    BOOL active = PSConfigActive();
-    (void)PSConfigDyldHideEnabled();  // warm the cache on this stack
+    BOOL install = PSConfigActive() && PSConfigDyldHideEnabled();
     PSHookLeave();
-    if (!active) return;
+    if (!install) return;
 
     // The four are hooked together or not at all - a partial install would be
     // the index desync that crashes.

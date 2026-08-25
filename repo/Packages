@@ -271,6 +271,22 @@ MD5sum: 34a57535c3b5df74be306f55631f4e4f
 SHA1: 9109a0278a1a55bc354b03cd70f2e525028666b2
 SHA256: b1910b0a0426eb8cdfb688346ecc00bc1075cf6af185f17ece95de01af366db6
 
+Package: com.romeo.pseudonym
+Name: Pseudonym
+Description: Per-app device identity. Each app sees a stable, coherent fake device instead of your real one.
+Maintainer: Romeo <romeogregoryx@gmail.com>
+Author: Romeo <romeogregoryx@gmail.com>
+Section: Tweaks
+Depends: ellekit, preferenceloader, firmware (>= 15.0)
+Architecture: iphoneos-arm64
+Version: 2.6.0
+Installed-Size: 444
+Filename: ./debs/com.romeo.pseudonym_2.6.0_iphoneos-arm64.deb
+Size: 34902
+MD5sum: c4a34544d772a1c314c2ce60b3a13839
+SHA1: a6b97fce29ec29e8ea181e3a987711a986647c71
+SHA256: 0db5bb1ab679c14b2bf7f8c893a07b14775716a2cc6a098e020e45318d45659c
+
 Package: com.romeo.pseudonyminspector
 Name: Pseudonym Inspector
 Description: Shows what an app actually sees about this device. Enable it in Pseudonym and watch the values change.

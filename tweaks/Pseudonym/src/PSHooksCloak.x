@@ -158,11 +158,15 @@ static BOOL h_canOpenURL(id self, SEL _cmd, NSURL *url) {
     // returns before hooking anything, so Settings, Sileo and non-enabled apps
     // receive none of these hooks. The config read is guarded so it cannot
     // deadlock against the hooks being installed.
+    // Gate installation on the switch too, not just app-enablement. Turning
+    // Hide Jailbreak off must actually remove these hooks on next launch -
+    // leaving the trampolines installed but passing through is still detectable
+    // by an app that inspects its own functions, which made the switch feel
+    // like it did nothing.
     PSHookEnter();
-    BOOL active = PSConfigActive();
-    (void)PSConfigCloakEnabled();  // warm the cache on this stack
+    BOOL install = PSConfigActive() && PSConfigCloakEnabled();
     PSHookLeave();
-    if (!active) return;
+    if (!install) return;
 
     MSHookFunction((void *)&stat,   (void *)h_stat,   (void **)&o_stat);
     MSHookFunction((void *)&lstat,  (void *)h_lstat,  (void **)&o_lstat);
