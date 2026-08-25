@@ -184,6 +184,23 @@ static PSSpecifier *PSCoordRow(id target, NSString *label, NSString *key,
         [specs addObject:spec];
     }
 
+    [specs addObject:PSGroup(@"Hide Jailbreak",
+        @"Best-effort: hides jailbreak files, fork and package-manager URL "
+        @"schemes from enabled apps, so apps that refuse to run on a jailbroken "
+        @"device will start. It is not invisibility - a determined check still "
+        @"sees through it, and it does not touch DeviceCheck or attestation.")];
+
+    PSSpecifier *cloakToggle =
+        [PSSpecifier preferenceSpecifierNamed:@"Hide Jailbreak"
+                                       target:self
+                                          set:@selector(setFlag:specifier:)
+                                          get:@selector(flag:)
+                                       detail:nil
+                                         cell:PSSwitchCell
+                                         edit:nil];
+    [cloakToggle setProperty:@"CloakEnabled" forKey:@"psKey"];
+    [specs addObject:cloakToggle];
+
     [specs addObject:PSGroup(@"Proxy",
         @"Routes enabled apps through an HTTP/HTTPS proxy. Pair it with a "
         @"location in the same country: a GPS fix in one place and an egress IP "

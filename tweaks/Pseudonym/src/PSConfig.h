@@ -21,6 +21,10 @@ double PSConfigAltitude(void);
 // each other.
 NSString *PSConfigTimeZone(void);
 
+// Best-effort jailbreak hiding, separate from identity spoofing so an app can
+// have one without the other.
+BOOL PSConfigCloakEnabled(void);
+
 // HTTP/HTTPS proxy for enabled apps. Kept separate from the location toggle so
 // the two can be used independently, though pairing them is usually the point:
 // a GPS fix in one country and an egress IP in another is a louder signal than

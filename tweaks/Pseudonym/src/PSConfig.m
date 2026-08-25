@@ -117,3 +117,7 @@ NSString *PSConfigTimeZone(void) {
     id value = PSPrefs()[@"TimeZone"];
     return [value isKindOfClass:[NSString class]] ? value : nil;
 }
+
+BOOL PSConfigCloakEnabled(void) {
+    return [PSPrefs()[@"CloakEnabled"] boolValue];
+}
