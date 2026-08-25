@@ -71,3 +71,30 @@ static NSDictionary *PSProxyDictionary(void) {
 }
 
 %end
+
+// sharedSession never calls +defaultSessionConfiguration, so hooking the
+// configuration factories above misses it entirely - and it is what apps reach
+// for when they just want to fetch a URL. Without this the proxy silently
+// covered far less than it appeared to.
+//
+// The replacement is cached so repeated calls return the same object: callers
+// reasonably assume the shared session is a singleton, and handing back a fresh
+// one each time would leak sessions and break identity comparisons.
+%hook NSURLSession
+
++ (NSURLSession *)sharedSession {
+    if (!PSProxyActive()) return %orig;
+
+    static NSURLSession *proxied;
+    static dispatch_once_t token;
+    dispatch_once(&token, ^{
+        NSURLSessionConfiguration *config =
+            [NSURLSessionConfiguration defaultSessionConfiguration];
+        config.connectionProxyDictionary = PSProxyDictionary();
+        // No delegate, matching the real shared session's semantics.
+        proxied = [NSURLSession sessionWithConfiguration:config];
+    });
+    return proxied;
+}
+
+%end

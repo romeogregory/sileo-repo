@@ -198,7 +198,15 @@ static NSString *PIAuthorizationName(CLAuthorizationStatus status) {
     // that comes back is the proxy's egress - which is the whole point of
     // checking it from inside a real app rather than from the settings pane.
     NSURL *url = [NSURL URLWithString:@"https://api.ipify.org"];
-    NSURLSessionDataTask *task = [[NSURLSession sharedSession]
+
+    // Built from defaultSessionConfiguration on purpose. sharedSession does not
+    // route through that factory, so a check written against it could never
+    // observe a proxy however well the proxy worked - a verification tool that
+    // cannot fail correctly is worse than none.
+    NSURLSession *session = [NSURLSession sessionWithConfiguration:
+        [NSURLSessionConfiguration defaultSessionConfiguration]];
+
+    NSURLSessionDataTask *task = [session
         dataTaskWithURL:url
       completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         NSString *result;
