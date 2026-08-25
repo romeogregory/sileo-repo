@@ -18,8 +18,19 @@
 //
 // Gated per app AND on a separate Hide Jailbreak switch, so it never touches an
 // app you did not opt in.
-static BOOL PSCloakActive(void) {
+static BOOL PSCloakActiveRaw(void) {
     return PSConfigActive() && PSConfigCloakEnabled();
+}
+
+// Guarded gate used by every hook below. If we are already inside a hook on
+// this thread - which happens when config's own file read re-enters open/stat -
+// return NO without touching config. That is what breaks the deadlock.
+static BOOL PSCloakActive(void) {
+    if (PSHookReentered()) return NO;
+    PSHookEnter();
+    BOOL active = PSCloakActiveRaw();
+    PSHookLeave();
+    return active;
 }
 
 // Paths a stock device does not have. Kept specific rather than blanket-hiding

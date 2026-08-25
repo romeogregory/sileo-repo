@@ -92,12 +92,13 @@ static intptr_t h_dyld_slide(uint32_t index) {
     // hooks must never exist in Settings or any Apple process. PSConfigActive()
     // is false for com.apple.* and for apps not opted in, which is exactly the
     // set that must stay untouched.
-    if (!PSConfigActive()) return;
-
-    // Warm the switch's cache here, on our own ctor stack, so the hook bodies
-    // never trigger a first-time file read from inside a dyld call under the
-    // loader lock.
-    (void)PSConfigDyldHideEnabled();
+    // Guard the config reads: with the cloak's open/stat hooks installed, these
+    // reads open a file and would otherwise re-enter those hooks and deadlock.
+    PSHookEnter();
+    BOOL active = PSConfigActive();
+    (void)PSConfigDyldHideEnabled();  // warm the cache on this stack
+    PSHookLeave();
+    if (!active) return;
 
     // The four are hooked together or not at all - a partial install would be
     // the index desync that crashes.

@@ -14,6 +14,15 @@ static NSDictionary *PSPrefs(void) {
     return prefs;
 }
 
+// One depth counter per thread. Any hook that reads configuration wraps the
+// read in Enter/Leave; a nested hook firing during that read sees depth > 0 and
+// bails to the original function instead of recursing back into config.
+static __thread int psHookDepth = 0;
+
+BOOL PSHookReentered(void) { return psHookDepth > 0; }
+void PSHookEnter(void) { psHookDepth++; }
+void PSHookLeave(void) { if (psHookDepth > 0) psHookDepth--; }
+
 NSString *PSConfigBundleID(void) {
     return [[NSBundle mainBundle] bundleIdentifier];
 }
@@ -25,16 +34,39 @@ static NSDictionary *PSAppEntry(void) {
     return [apps isKindOfClass:[NSDictionary class]] ? apps[bundleID] : nil;
 }
 
+// Bundles that must never be touched: Apple's own, and the jailbreak's package
+// managers and tools. Hiding jailbreak files from these breaks them outright.
+static BOOL PSIsProtectedBundle(NSString *bundleID) {
+    if ([bundleID hasPrefix:@"com.apple."]) return YES;
+
+    static NSSet *protectedApps;
+    static dispatch_once_t token;
+    dispatch_once(&token, ^{
+        protectedApps = [NSSet setWithArray:@[
+            @"org.coolstar.SileoStore",   // Sileo
+            @"xyz.willy.Zebra",           // Zebra
+            @"com.saurik.Cydia",          // Cydia
+            @"com.tigisoftware.Filza",    // Filza
+            @"ws.hbang.Terminal",         // NewTerm
+            @"com.opa334.Dopamine",       // Dopamine
+            @"com.romeo.pseudonyminspector", // our own inspector reads truth
+        ]];
+    });
+    return [protectedApps containsObject:bundleID];
+}
+
 BOOL PSConfigActive(void) {
     static BOOL active;
     static dispatch_once_t token;
     dispatch_once(&token, ^{
         NSString *bundleID = PSConfigBundleID();
 
-        // Never touch Apple's own processes. Spoofing identifiers inside
-        // SpringBoard, the App Store or system services breaks activation,
-        // push and iCloud in ways that are tedious to unpick.
-        if (!bundleID.length || [bundleID hasPrefix:@"com.apple."]) {
+        // Never touch Apple's own processes, or the jailbreak's own apps.
+        // Spoofing identifiers inside SpringBoard or the App Store breaks
+        // activation and push; hiding jailbreak files from Sileo, Zebra or a
+        // terminal makes them unable to find their own files under /var/jb and
+        // they stop launching. Neither has any reason to be spoofed.
+        if (!bundleID.length || PSIsProtectedBundle(bundleID)) {
             active = NO;
             return;
         }

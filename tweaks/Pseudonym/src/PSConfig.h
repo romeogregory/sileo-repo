@@ -5,6 +5,15 @@
 // Apple bundles are refused outright regardless of configuration.
 BOOL PSConfigActive(void);
 
+// Reentrancy guard. The cloak hooks open/stat, and reading configuration itself
+// opens a file - which lands back in those hooks. Without this, that recursion
+// deadlocks the process (it hung every UIKit app, SpringBoard included).
+// A hook checks PSHookReentered() first and passes through if it is already
+// inside a guarded region on this thread.
+BOOL PSHookReentered(void);
+void PSHookEnter(void);
+void PSHookLeave(void);
+
 NSData *PSConfigSeed(void);
 NSString *PSConfigBundleID(void);
 NSInteger PSConfigGeneration(void);
