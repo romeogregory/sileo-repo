@@ -201,6 +201,26 @@ static PSSpecifier *PSCoordRow(id target, NSString *label, NSString *key,
     [cloakToggle setProperty:@"CloakEnabled" forKey:@"psKey"];
     [specs addObject:cloakToggle];
 
+    PSSpecifier *dyldToggle =
+        [PSSpecifier preferenceSpecifierNamed:@"Hide From Dylib List"
+                                       target:self
+                                          set:@selector(setFlag:specifier:)
+                                          get:@selector(flag:)
+                                       detail:nil
+                                         cell:PSSwitchCell
+                                         edit:nil];
+    [dyldToggle setProperty:@"DyldHideEnabled" forKey:@"psKey"];
+    [specs addObject:dyldToggle];
+
+    PSSpecifier *dyldNote = [PSSpecifier emptyGroupSpecifier];
+    [dyldNote setProperty:@"Hide From Dylib List removes injected libraries from "
+                          @"the loaded-image list, defeating the check that spots "
+                          @"the tweak by name. It is the strongest hook and the "
+                          @"most likely to crash an app - enable it on one app at "
+                          @"a time and confirm that app still launches."
+                   forKey:@"footerText"];
+    [specs addObject:dyldNote];
+
     [specs addObject:PSGroup(@"Proxy",
         @"Routes enabled apps through an HTTP/HTTPS proxy. Pair it with a "
         @"location in the same country: a GPS fix in one place and an egress IP "

@@ -25,6 +25,10 @@ NSString *PSConfigTimeZone(void);
 // have one without the other.
 BOOL PSConfigCloakEnabled(void);
 
+// Hides injected images from the dyld list. Its own switch because it is the
+// riskier hook - see PSHooksDyld.x.
+BOOL PSConfigDyldHideEnabled(void);
+
 // HTTP/HTTPS proxy for enabled apps. Kept separate from the location toggle so
 // the two can be used independently, though pairing them is usually the point:
 // a GPS fix in one country and an egress IP in another is a louder signal than

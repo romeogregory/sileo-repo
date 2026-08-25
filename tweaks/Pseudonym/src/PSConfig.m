@@ -121,3 +121,7 @@ NSString *PSConfigTimeZone(void) {
 BOOL PSConfigCloakEnabled(void) {
     return [PSPrefs()[@"CloakEnabled"] boolValue];
 }
+
+BOOL PSConfigDyldHideEnabled(void) {
+    return [PSPrefs()[@"DyldHideEnabled"] boolValue];
+}
