@@ -23,6 +23,24 @@ static int PSCopyOut(const char *value, void *oldp, size_t *oldlenp) {
     return 0;
 }
 
+// hw.memsize and hw.ncpu come back as fixed-width integers rather than strings,
+// so they need their own copy-out following the same kernel contract.
+static int PSCopyOutBytes(const void *value, size_t size, void *oldp,
+                          size_t *oldlenp) {
+    if (!oldp) {
+        *oldlenp = size;
+        return 0;
+    }
+    if (*oldlenp < size) {
+        *oldlenp = size;
+        errno = ENOMEM;
+        return -1;
+    }
+    memcpy(oldp, value, size);
+    *oldlenp = size;
+    return 0;
+}
+
 %hookf(int, sysctlbyname, const char *name, void *oldp, size_t *oldlenp, void *newp, size_t newlen) {
     if (!PSConfigActive() || !name || !oldlenp || newp) return %orig;
 
@@ -35,6 +53,15 @@ static int PSCopyOut(const char *value, void *oldp, size_t *oldlenp) {
         // Read from the same profile entry as hw.machine, so the two can never
         // contradict one another.
         return PSCopyOut(profile.board, oldp, oldlenp);
+    }
+    if (strcmp(name, "hw.memsize") == 0) {
+        uint64_t memsize = profile.memsize;
+        return PSCopyOutBytes(&memsize, sizeof(memsize), oldp, oldlenp);
+    }
+    if (strcmp(name, "hw.ncpu") == 0 || strcmp(name, "hw.activecpu") == 0 ||
+        strcmp(name, "hw.logicalcpu") == 0 || strcmp(name, "hw.physicalcpu") == 0) {
+        int32_t ncpu = profile.ncpu;
+        return PSCopyOutBytes(&ncpu, sizeof(ncpu), oldp, oldlenp);
     }
 
     return %orig;

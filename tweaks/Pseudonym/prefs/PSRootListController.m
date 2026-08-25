@@ -159,6 +159,8 @@ static PSSpecifier *PSCoordRow(id target, NSString *label, NSString *key,
     [specs addObject:PSCoordRow(self, @"Latitude", @"Latitude", @"52.3676")];
     [specs addObject:PSCoordRow(self, @"Longitude", @"Longitude", @"4.9041")];
     [specs addObject:PSCoordRow(self, @"Altitude (m)", @"Altitude", @"0")];
+    [specs addObject:PSTextRow(self, @"Time zone", @"TimeZone",
+                               @"Europe/Amsterdam", UIKeyboardTypeDefault, NO)];
 
     [specs addObject:PSGroup(@"Apps",
         @"Enabling an app takes effect the next time it launches, so force-quit "

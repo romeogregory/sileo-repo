@@ -112,3 +112,8 @@ NSString *PSConfigProxyUser(void) {
 NSString *PSConfigProxyPassword(void) {
     return PSString(@"ProxyPassword");
 }
+
+NSString *PSConfigTimeZone(void) {
+    id value = PSPrefs()[@"TimeZone"];
+    return [value isKindOfClass:[NSString class]] ? value : nil;
+}

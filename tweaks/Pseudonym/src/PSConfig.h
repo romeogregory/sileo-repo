@@ -16,6 +16,11 @@ double PSConfigLatitude(void);
 double PSConfigLongitude(void);
 double PSConfigAltitude(void);
 
+// Empty means leave the clock alone, which is correct for an unchanged
+// location. Set it to match a spoofed position so the two cannot contradict
+// each other.
+NSString *PSConfigTimeZone(void);
+
 // HTTP/HTTPS proxy for enabled apps. Kept separate from the location toggle so
 // the two can be used independently, though pairing them is usually the point:
 // a GPS fix in one country and an egress IP in another is a louder signal than

@@ -4,17 +4,22 @@ typedef struct {
     const char *machine;    // hw.machine, e.g. "iPhone10,3"
     const char *board;      // hw.model board id, e.g. "D22AP"
     const char *marketing;  // human-readable, for the log line only
+    uint64_t memsize;       // hw.memsize, must match the claimed model
+    int ncpu;               // hw.ncpu, likewise
 } PSProfile;
 
-// Profiles are deliberately limited to A9-A11 hardware — the only devices that
-// can run the iOS 16.7 branch. Reporting an iPhone 15 while the OS reports
-// 16.7.x is a pairing Apple never shipped, and an impossible pairing is a
-// STRONGER fingerprint than not spoofing at all: it puts you in a population of
-// one. Coherence is the whole point of this table.
+// Limited to the two iPhone X variants, and that is a deliberate reduction.
 //
-// machine and board are always read from the same entry so they cannot
-// disagree with each other. NOTE: the board ids below are from memory and are
-// worth verifying against real devices — a wrong machine/board pairing is
-// exactly the incoherence this table exists to avoid.
+// Reporting an iPhone 6s while UIScreen still returns 1125x2436 at 3x describes
+// a device Apple never built. Spoofing the screen too would wreck app layout,
+// so the only coherent option is to stop lying about the model: an honest
+// iPhone X is one of tens of millions, while an impossible pairing is a
+// population of one and is a STRONGER identifier than no spoofing at all.
+//
+// The privacy win was never the model. It is the per-app IDFA, IDFV and
+// keychain namespace, and those are untouched by this.
+//
+// 10,3 is the global iPhone X and 10,6 the variant sold in some markets; they
+// are physically identical, so either is coherent with your hardware.
 NSUInteger PSProfileCount(void);
 PSProfile PSProfileAtIndex(NSUInteger index);

@@ -1,6 +1,6 @@
 Package: com.romeo.pseudonym
 Name: Pseudonym
-Version: 1.8.0
+Version: 1.9.0
 Architecture: iphoneos-arm64
 Description: Per-app device identity. Each app sees a stable, coherent fake device instead of your real one.
 Maintainer: Romeo <romeogregoryx@gmail.com>
