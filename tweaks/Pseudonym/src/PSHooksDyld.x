@@ -81,9 +81,26 @@ static intptr_t h_dyld_slide(uint32_t index) {
 }
 
 %ctor {
-    // Installed unconditionally; the per-call gate decides whether to hide, so
-    // flipping the switch needs no reinjection. The four are hooked together or
-    // not at all - a partial install would be the desync that crashes.
+    // Only install in a process that is actually being spoofed. This is not an
+    // optimisation - it is why 2.1.0 crashed Settings.
+    //
+    // The main tweak injects into everything linking UIKit, Settings included.
+    // Hooking the dyld enumeration family is special: even a gated pass-through
+    // routes every call through our trampoline, and these functions run while
+    // dyld holds its loader lock. The gate's first call does a file read, and
+    // doing that under the loader lock deadlocks or crashes the process. So the
+    // hooks must never exist in Settings or any Apple process. PSConfigActive()
+    // is false for com.apple.* and for apps not opted in, which is exactly the
+    // set that must stay untouched.
+    if (!PSConfigActive()) return;
+
+    // Warm the switch's cache here, on our own ctor stack, so the hook bodies
+    // never trigger a first-time file read from inside a dyld call under the
+    // loader lock.
+    (void)PSConfigDyldHideEnabled();
+
+    // The four are hooked together or not at all - a partial install would be
+    // the index desync that crashes.
     MSHookFunction((void *)&_dyld_image_count,
                    (void *)h_dyld_count, (void **)&o_dyld_count);
     MSHookFunction((void *)&_dyld_get_image_name,
