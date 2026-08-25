@@ -1,30 +1,36 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 #import <sys/stat.h>
 #import <unistd.h>
 #import <stdio.h>
+#import <stdarg.h>
+#import <fcntl.h>
 #import <string.h>
 #import <errno.h>
 #import "PSConfig.h"
 
-// Best-effort jailbreak hiding. It intercepts the checks apps commonly use -
-// looking for jailbreak files, forking, probing package-manager URL schemes -
-// and makes them come back the way they would on a stock device.
+// Best-effort jailbreak hiding: the checks apps commonly use - jailbreak files,
+// fork, package-manager URL schemes, the injection env var - answered the way a
+// stock device would. Not invisibility; attestation and implementation-address
+// checks still see through it.
 //
-// It is NOT invisibility. A determined check (comparing a method's
-// implementation address to its owning image, scanning the loaded dylib list,
-// hardware attestation) will still see through it. This raises the floor, it
-// does not close the door. Anything sold as undetectable is lying.
-//
-// Gated per app AND on a separate Hide Jailbreak switch, so it never touches an
-// app you did not opt in.
+// SAFETY, and the reason this whole file was rebuilt: the hooks install ONLY in
+// an app that is actually opted in, from a %ctor gated on PSConfigActive().
+// With nothing enabled, none of this code exists in any process - not
+// SpringBoard, not Sileo, not the app you just installed. Earlier builds
+// installed these process-wide, so a fault reached the whole device even with
+// every switch off. That can no longer happen.
+extern void MSHookFunction(void *symbol, void *replacement, void **result);
+extern void MSHookMessageEx(Class cls, SEL selector, IMP imp, IMP *result);
+
 static BOOL PSCloakActiveRaw(void) {
     return PSConfigActive() && PSConfigCloakEnabled();
 }
 
-// Guarded gate used by every hook below. If we are already inside a hook on
-// this thread - which happens when config's own file read re-enters open/stat -
-// return NO without touching config. That is what breaks the deadlock.
+// Guarded gate. If already inside a hook on this thread - which happens when
+// config's own file read re-enters open/stat - return NO without touching
+// config. Breaks the reentrancy that deadlocked earlier builds.
 static BOOL PSCloakActive(void) {
     if (PSHookReentered()) return NO;
     PSHookEnter();
@@ -33,38 +39,20 @@ static BOOL PSCloakActive(void) {
     return active;
 }
 
-// Paths a stock device does not have. Kept specific rather than blanket-hiding
-// everything under /var/jb, because this tweak's own preferences live there and
-// hiding them from ourselves would break the very config that gates this.
+// Only clearly non-stock paths, and never our own preferences - hiding those
+// from ourselves would break the gate that controls this.
 static BOOL PSPathIsJailbreakTell(const char *path) {
     if (!path) return NO;
-
-    // Allowlist first. Our own preferences and anything in com.romeo.* must
-    // stay visible or the gate above cannot read its own state.
     if (strstr(path, "com.romeo.")) return NO;
 
     static const char *tells[] = {
-        "/var/jb",
-        "/Applications/Cydia.app",
-        "/Applications/Sileo.app",
-        "/Applications/Zebra.app",
-        "/usr/sbin/sshd",
-        "/usr/bin/ssh",
-        "/bin/bash",
-        "/bin/sh",
-        "/etc/apt",
-        "/private/var/lib/apt",
-        "/usr/lib/libjailbreak.dylib",
-        "/usr/libexec/ellekit",
-        "/usr/libexec/sileo",
-        "/Library/MobileSubstrate",
-        "/var/lib/dpkg",
-        "/var/lib/cydia",
-        "/.installed_unc0ver",
-        "/.bootstrapped",
-        "/taurine",
-        "/palera1n",
-        "/checkra1n",
+        "/var/jb", "/Applications/Cydia.app", "/Applications/Sileo.app",
+        "/Applications/Zebra.app", "/usr/sbin/sshd", "/usr/bin/ssh",
+        "/bin/bash", "/bin/sh", "/etc/apt", "/private/var/lib/apt",
+        "/usr/lib/libjailbreak.dylib", "/usr/libexec/ellekit",
+        "/usr/libexec/sileo", "/Library/MobileSubstrate", "/var/lib/dpkg",
+        "/var/lib/cydia", "/.installed_unc0ver", "/.bootstrapped",
+        "/taurine", "/palera1n", "/checkra1n",
     };
     for (size_t i = 0; i < sizeof(tells) / sizeof(tells[0]); i++) {
         if (strstr(path, tells[i])) return YES;
@@ -72,93 +60,87 @@ static BOOL PSPathIsJailbreakTell(const char *path) {
     return NO;
 }
 
-#pragma mark - C file checks
+#pragma mark - C hooks
 
-// The workhorses. Most detection is a stat/access on a known path, so making
-// those report "no such file" covers the common case.
-%hookf(int, stat, const char *path, struct stat *buf) {
-    if (PSCloakActive() && PSPathIsJailbreakTell(path)) {
-        errno = ENOENT;
-        return -1;
-    }
-    return %orig;
+static int (*o_stat)(const char *, struct stat *);
+static int (*o_lstat)(const char *, struct stat *);
+static int (*o_access)(const char *, int);
+static FILE *(*o_fopen)(const char *, const char *);
+static int (*o_open)(const char *, int, ...);
+static pid_t (*o_fork)(void);
+static char *(*o_getenv)(const char *);
+
+static int h_stat(const char *path, struct stat *buf) {
+    if (PSCloakActive() && PSPathIsJailbreakTell(path)) { errno = ENOENT; return -1; }
+    return o_stat(path, buf);
 }
 
-%hookf(int, lstat, const char *path, struct stat *buf) {
-    if (PSCloakActive() && PSPathIsJailbreakTell(path)) {
-        errno = ENOENT;
-        return -1;
-    }
-    return %orig;
+static int h_lstat(const char *path, struct stat *buf) {
+    if (PSCloakActive() && PSPathIsJailbreakTell(path)) { errno = ENOENT; return -1; }
+    return o_lstat(path, buf);
 }
 
-%hookf(int, access, const char *path, int mode) {
-    if (PSCloakActive() && PSPathIsJailbreakTell(path)) {
-        errno = ENOENT;
-        return -1;
-    }
-    return %orig;
+static int h_access(const char *path, int mode) {
+    if (PSCloakActive() && PSPathIsJailbreakTell(path)) { errno = ENOENT; return -1; }
+    return o_access(path, mode);
 }
 
-%hookf(FILE *, fopen, const char *path, const char *mode) {
-    if (PSCloakActive() && PSPathIsJailbreakTell(path)) {
-        errno = ENOENT;
+static FILE *h_fopen(const char *path, const char *mode) {
+    if (PSCloakActive() && PSPathIsJailbreakTell(path)) { errno = ENOENT; return NULL; }
+    return o_fopen(path, mode);
+}
+
+// open is variadic. On arm64 the creation mode arrives as a stack arg, so it
+// must be read with va_arg and forwarded; a fixed third parameter would read
+// the wrong register and corrupt file creation.
+static int h_open(const char *path, int flags, ...) {
+    if (PSCloakActive() && PSPathIsJailbreakTell(path)) { errno = ENOENT; return -1; }
+    if (flags & O_CREAT) {
+        va_list ap;
+        va_start(ap, flags);
+        mode_t mode = (mode_t)va_arg(ap, int);
+        va_end(ap);
+        return o_open(path, flags, mode);
+    }
+    return o_open(path, flags);
+}
+
+static pid_t h_fork(void) {
+    if (PSCloakActive()) { errno = EPERM; return -1; }
+    return o_fork();
+}
+
+static char *h_getenv(const char *name) {
+    if (PSCloakActive() && name && strcmp(name, "DYLD_INSERT_LIBRARIES") == 0) {
         return NULL;
     }
-    return %orig;
+    return o_getenv(name);
 }
 
-%hookf(int, open, const char *path, int flags, ...) {
-    if (PSCloakActive() && PSPathIsJailbreakTell(path)) {
-        errno = ENOENT;
-        return -1;
-    }
-    // open is variadic: mode only matters when creating, and a blocked path
-    // never reaches here, so forwarding without the mode argument is safe.
-    return %orig(path, flags);
-}
+#pragma mark - Objective-C hooks
 
-#pragma mark - fork
+static BOOL (*o_fileExists)(id, SEL, NSString *);
+static BOOL (*o_fileExistsIsDir)(id, SEL, NSString *, BOOL *);
+static BOOL (*o_canOpenURL)(id, SEL, NSURL *);
 
-// A sandboxed app cannot fork; a jailbroken one can. Apps fork purely to see
-// whether it succeeds, so returning the sandboxed failure is the honest stock
-// answer.
-%hookf(pid_t, fork) {
-    if (PSCloakActive()) {
-        errno = EPERM;
-        return -1;
-    }
-    return %orig;
-}
-
-#pragma mark - Objective-C surface
-
-%hook NSFileManager
-
-- (BOOL)fileExistsAtPath:(NSString *)path {
+static BOOL h_fileExists(id self, SEL _cmd, NSString *path) {
     if (PSCloakActive() && path &&
         PSPathIsJailbreakTell(path.fileSystemRepresentation)) {
         return NO;
     }
-    return %orig;
+    return o_fileExists(self, _cmd, path);
 }
 
-- (BOOL)fileExistsAtPath:(NSString *)path isDirectory:(BOOL *)isDirectory {
+static BOOL h_fileExistsIsDir(id self, SEL _cmd, NSString *path, BOOL *isDir) {
     if (PSCloakActive() && path &&
         PSPathIsJailbreakTell(path.fileSystemRepresentation)) {
-        if (isDirectory) *isDirectory = NO;
+        if (isDir) *isDir = NO;
         return NO;
     }
-    return %orig;
+    return o_fileExistsIsDir(self, _cmd, path, isDir);
 }
 
-%end
-
-%hook UIApplication
-
-// canOpenURL: for cydia://, sileo:// and the like reveals a package manager
-// without ever touching the filesystem.
-- (BOOL)canOpenURL:(NSURL *)url {
+static BOOL h_canOpenURL(id self, SEL _cmd, NSURL *url) {
     if (PSCloakActive() && url.scheme) {
         static NSSet *schemes;
         static dispatch_once_t token;
@@ -168,18 +150,32 @@ static BOOL PSPathIsJailbreakTell(const char *path) {
         });
         if ([schemes containsObject:url.scheme.lowercaseString]) return NO;
     }
-    return %orig;
+    return o_canOpenURL(self, _cmd, url);
 }
 
-%end
+%ctor {
+    // Install ONLY where an app is actually opted in. With nothing enabled this
+    // returns before hooking anything, so Settings, Sileo and non-enabled apps
+    // receive none of these hooks. The config read is guarded so it cannot
+    // deadlock against the hooks being installed.
+    PSHookEnter();
+    BOOL active = PSConfigActive();
+    (void)PSConfigCloakEnabled();  // warm the cache on this stack
+    PSHookLeave();
+    if (!active) return;
 
-#pragma mark - Environment
+    MSHookFunction((void *)&stat,   (void *)h_stat,   (void **)&o_stat);
+    MSHookFunction((void *)&lstat,  (void *)h_lstat,  (void **)&o_lstat);
+    MSHookFunction((void *)&access, (void *)h_access, (void **)&o_access);
+    MSHookFunction((void *)&fopen,  (void *)h_fopen,  (void **)&o_fopen);
+    MSHookFunction((void *)&open,   (void *)h_open,   (void **)&o_open);
+    MSHookFunction((void *)&fork,   (void *)h_fork,   (void **)&o_fork);
+    MSHookFunction((void *)&getenv, (void *)h_getenv, (void **)&o_getenv);
 
-%hookf(char *, getenv, const char *name) {
-    // DYLD_INSERT_LIBRARIES is how tweaks are injected; its mere presence is a
-    // tell, so report it unset.
-    if (PSCloakActive() && name && strcmp(name, "DYLD_INSERT_LIBRARIES") == 0) {
-        return NULL;
-    }
-    return %orig;
+    MSHookMessageEx([NSFileManager class], @selector(fileExistsAtPath:),
+                    (IMP)h_fileExists, (IMP *)&o_fileExists);
+    MSHookMessageEx([NSFileManager class], @selector(fileExistsAtPath:isDirectory:),
+                    (IMP)h_fileExistsIsDir, (IMP *)&o_fileExistsIsDir);
+    MSHookMessageEx([UIApplication class], @selector(canOpenURL:),
+                    (IMP)h_canOpenURL, (IMP *)&o_canOpenURL);
 }
